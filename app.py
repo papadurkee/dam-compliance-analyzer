@@ -335,19 +335,61 @@ def display_step1_results(step_data: Dict[str, Any]):
         
         # Ensure job_aid is a dictionary
         if isinstance(job_aid, dict):
-            # Display as formatted cards if we have a reasonable number of items
-            if len(job_aid) <= 4:
-                cols = st.columns(len(job_aid))
-                for i, (key, value) in enumerate(job_aid.items()):
+            # Display the assessment categories with their status indicators
+            categories = list(job_aid.keys())
+            if len(categories) <= 4:
+                cols = st.columns(len(categories))
+                for i, (category, category_data) in enumerate(job_aid.items()):
                     with cols[i]:
-                        st.metric(
-                            label=key.replace("_", " ").title(),
-                            value=str(value)
-                        )
+                        category_title = category.replace("_", " ").title()
+                        
+                        # Extract assessment status if it's a nested structure
+                        if isinstance(category_data, dict) and "assessment" in category_data:
+                            assessment = category_data["assessment"]
+                            
+                            # Display with appropriate color coding
+                            if assessment == "PASS":
+                                st.success(f"✅ {category_title}")
+                                st.caption("PASS")
+                            elif assessment == "FAIL":
+                                st.error(f"❌ {category_title}")
+                                st.caption("FAIL")
+                            elif assessment == "NEEDS_REVIEW":
+                                st.warning(f"⚠️ {category_title}")
+                                st.caption("NEEDS REVIEW")
+                            else:
+                                st.info(f"ℹ️ {category_title}")
+                                st.caption(str(assessment))
+                        else:
+                            # Fallback for simple values
+                            st.metric(
+                                label=category_title,
+                                value=str(category_data)
+                            )
             else:
                 # Display as a formatted list for many items
-                for key, value in job_aid.items():
-                    st.markdown(f"**{key.replace('_', ' ').title()}:** {value}")
+                for category, category_data in job_aid.items():
+                    category_title = category.replace("_", " ").title()
+                    
+                    if isinstance(category_data, dict) and "assessment" in category_data:
+                        assessment = category_data["assessment"]
+                        
+                        # Display with appropriate color coding
+                        if assessment == "PASS":
+                            st.success(f"✅ **{category_title}:** PASS")
+                        elif assessment == "FAIL":
+                            st.error(f"❌ **{category_title}:** FAIL")
+                        elif assessment == "NEEDS_REVIEW":
+                            st.warning(f"⚠️ **{category_title}:** NEEDS REVIEW")
+                        else:
+                            st.info(f"ℹ️ **{category_title}:** {assessment}")
+                        
+                        # Show issues if present
+                        if "issues" in category_data and category_data["issues"]:
+                            for issue in category_data["issues"]:
+                                st.caption(f"• {issue}")
+                    else:
+                        st.markdown(f"**{category_title}:** {category_data}")
             
             # Also show raw JSON in expander
             with st.expander("View Raw JSON"):

@@ -164,15 +164,23 @@ class Step3Processor(BaseProcessor):
                 if result:
                     return result
                 else:
-                    logger.warning("Dual format extraction returned None, using fallback")
+                    logger.warning("Dual format extraction returned None, trying fallback parsing on text")
+                    # Don't give up yet - try fallback parsing on the text
+                    try:
+                        fallback_result = self._fallback_parse_response(response)
+                        if fallback_result:
+                            return fallback_result
+                    except Exception as fallback_error:
+                        logger.warning(f"Fallback parsing on text failed: {str(fallback_error)}")
             
             # If we got structured data, validate and format it
-            logger.info("Got structured data, processing")
-            result = self._process_structured_response(parsed_data)
-            if result:
-                return result
-            else:
-                logger.warning("Structured response processing returned None, using fallback")
+            elif isinstance(parsed_data, dict) and "text" not in parsed_data:
+                logger.info("Got structured data, processing")
+                result = self._process_structured_response(parsed_data)
+                if result:
+                    return result
+                else:
+                    logger.warning("Structured response processing returned None, using fallback")
             
         except Exception as e:
             logger.warning(f"Standard parsing failed: {str(e)}, trying fallback methods")
@@ -293,56 +301,133 @@ class Step3Processor(BaseProcessor):
     
     def _try_extract_from_text_analysis(self, text: str) -> Optional[Dict[str, Any]]:
         """Try to analyze the text content and create findings from it."""
-        # Look for compliance-related keywords
-        compliance_keywords = {
-            "passed": "PASSED",
-            "compliant": "PASSED", 
-            "acceptable": "PASSED",
-            "failed": "FAILED",
-            "non-compliant": "FAILED",
-            "unacceptable": "FAILED",
-            "issue": "FAILED",
-            "problem": "FAILED",
-            "error": "FAILED"
+        logger.info("Analyzing text content for compliance information")
+        
+        # Look for compliance-related keywords with more nuanced analysis
+        compliance_indicators = {
+            "positive": ["passed", "compliant", "acceptable", "meets", "satisfies", "adequate", "good", "excellent"],
+            "negative": ["failed", "non-compliant", "unacceptable", "issues", "problems", "errors", "poor", "inadequate"],
+            "review": ["needs review", "requires attention", "should be", "consider", "may need", "potential"]
         }
         
         text_lower = text.lower()
-        status = "PARTIAL"  # Default
         
-        # Determine status based on keywords
-        for keyword, result_status in compliance_keywords.items():
-            if keyword in text_lower:
-                status = result_status
-                break
+        # Count indicators to determine overall status
+        positive_count = sum(1 for word in compliance_indicators["positive"] if word in text_lower)
+        negative_count = sum(1 for word in compliance_indicators["negative"] if word in text_lower)
+        review_count = sum(1 for word in compliance_indicators["review"] if word in text_lower)
         
-        # Extract recommendations from text
+        # Determine status based on indicator counts
+        if negative_count > positive_count:
+            status = "FAILED"
+        elif positive_count > negative_count and review_count == 0:
+            status = "PASSED"
+        else:
+            status = "PARTIAL"
+        
+        # Extract issues from the text
+        issues = []
+        issue_patterns = [
+            r'(?:issue|problem|error|concern)[s]?[:\s]*([^.\n]{10,100})',
+            r'(?:not|doesn\'t|cannot|fails? to)[^.\n]{5,80}',
+            r'(?:poor|inadequate|insufficient|missing)[^.\n]{5,80}'
+        ]
+        
+        for pattern in issue_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                if isinstance(match, str) and len(match.strip()) > 10:
+                    issues.append({
+                        "category": "Quality Assessment",
+                        "description": match.strip(),
+                        "action": "Review and address this finding"
+                    })
+        
+        # Extract recommendations from text with better patterns
         recommendations = []
         recommendation_patterns = [
-            r'recommend[s]?[:\s]+([^.\n]+)',
-            r'suggest[s]?[:\s]+([^.\n]+)',
-            r'should[:\s]+([^.\n]+)'
+            r'recommend[s]?[:\s]*([^.\n]{10,150})',
+            r'suggest[s]?[:\s]*([^.\n]{10,150})',
+            r'should[:\s]*([^.\n]{10,150})',
+            r'consider[:\s]*([^.\n]{10,150})',
+            r'(?:to improve|for better)[^.\n]{10,150}'
         ]
         
         for pattern in recommendation_patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
             for match in matches:
                 if len(match.strip()) > 10:
-                    recommendations.append(match.strip())
+                    clean_rec = match.strip().rstrip('.,;')
+                    if clean_rec not in recommendations:  # Avoid duplicates
+                        recommendations.append(clean_rec)
         
+        # Extract missing information
+        missing_info = []
+        missing_patterns = [
+            r'(?:missing|lacks?|absent|not provided)[:\s]*([^.\n]{10,100})',
+            r'(?:no|without)[^.\n]{5,80}(?:metadata|information|data)',
+            r'(?:incomplete|insufficient)[^.\n]{5,80}'
+        ]
+        
+        for pattern in missing_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                if isinstance(match, str) and len(match.strip()) > 10:
+                    missing_info.append({
+                        "field": "content_analysis",
+                        "description": match.strip(),
+                        "action": "Provide the missing information"
+                    })
+        
+        # If we didn't extract much, provide generic recommendations
         if not recommendations:
-            recommendations = [
-                "Review the analysis results carefully",
-                "Consider re-running the analysis with different parameters"
-            ]
+            if status == "FAILED":
+                recommendations = [
+                    "Address the identified compliance issues",
+                    "Review image quality and technical specifications",
+                    "Ensure all required metadata is complete"
+                ]
+            elif status == "PASSED":
+                recommendations = [
+                    "Continue with current quality standards",
+                    "Maintain compliance with established guidelines"
+                ]
+            else:
+                recommendations = [
+                    "Review the analysis results carefully",
+                    "Consider additional quality checks if needed"
+                ]
+        
+        # Extract component information if available
+        component_id = "ANALYSIS_RESULT"
+        component_name = "Digital Asset Analysis"
+        
+        # Look for component identifiers in the text
+        id_patterns = [
+            r'(?:component|image|file|asset)[_\s]*(?:id|name)[:\s]*([^\s\n]{3,50})',
+            r'(?:analyzing|processing)[:\s]*([^\s\n]{3,50})'
+        ]
+        
+        for pattern in id_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                potential_id = match.group(1).strip('.,;:"\'')
+                if len(potential_id) > 2:
+                    component_id = potential_id
+                    break
         
         findings = self._normalize_findings_json({
+            "component_id": component_id,
+            "component_name": component_name,
             "check_status": status,
-            "recommendations": recommendations[:3]  # Limit to 3 recommendations
+            "issues_detected": issues[:5],  # Limit to 5 issues
+            "missing_information": missing_info[:3],  # Limit to 3 missing items
+            "recommendations": recommendations[:5]  # Limit to 5 recommendations
         })
         
         return {
             "json_output": findings,
-            "human_readable_report": self._create_text_based_report(text, findings)
+            "human_readable_report": self._create_enhanced_text_report(text, findings)
         }
     
     def _create_minimal_response(self, text: str) -> Optional[Dict[str, Any]]:
@@ -437,6 +522,47 @@ The system was able to process your request but could not extract detailed findi
     
     def _create_text_based_report(self, original_text: str, findings: Dict[str, Any]) -> str:
         """Create a human-readable report based on the original text and findings."""
+        status = findings.get("check_status", "PARTIAL")
+        
+        report = f"""
+**DAM Compliance Analysis Report**
+
+**Component:** {findings.get('component_name', 'Digital Component')}
+**Component ID:** {findings.get('component_id', 'UNKNOWN')}
+**Analysis Date:** {self._get_current_date()}
+**Status:** {status}
+
+**Analysis Summary:**
+Based on the AI analysis, the component status is {status}. 
+
+**Original AI Response Summary:**
+{original_text[:400]}{'...' if len(original_text) > 400 else ''}
+
+**Issues Detected:** {len(findings.get('issues_detected', []))}
+**Missing Information:** {len(findings.get('missing_information', []))}
+**Recommendations:** {len(findings.get('recommendations', []))}
+
+**Recommendations:**
+"""
+        
+        recommendations = findings.get('recommendations', [])
+        if recommendations:
+            for i, rec in enumerate(recommendations, 1):
+                report += f"\n{i}. {rec}"
+        else:
+            report += "\n1. Review the analysis results carefully"
+            report += "\n2. Consider re-running the analysis if needed"
+        
+        report += f"""
+
+**Note:** This report was generated using enhanced parsing due to response format variations.
+The analysis was completed successfully but required interpretation of the AI response.
+        """
+        
+        return report.strip()
+    
+    def _create_enhanced_text_report(self, original_text: str, findings: Dict[str, Any]) -> str:
+        """Create an enhanced human-readable report based on the original text and findings."""
         status = findings.get("check_status", "PARTIAL")
         
         report = f"""
