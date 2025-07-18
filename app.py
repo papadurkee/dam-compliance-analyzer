@@ -1121,24 +1121,396 @@ def display_instructions():
         """)
 
 
+def create_settings_interface():
+    """Creates the settings interface for managing workflow prompts."""
+    st.header("⚙️ Settings")
+    st.markdown("Manage and customize the AI prompts for each workflow step.")
+    
+    # Create tabs for different settings sections
+    settings_tabs = st.tabs(["📝 Prompt Management", "🔧 System Settings", "📊 Analytics"])
+    
+    with settings_tabs[0]:
+        create_prompt_management_interface()
+    
+    with settings_tabs[1]:
+        create_system_settings_interface()
+    
+    with settings_tabs[2]:
+        create_analytics_interface()
+
+
+def create_prompt_management_interface():
+    """Creates the prompt management interface."""
+    st.subheader("📝 Workflow Prompt Management")
+    st.markdown("Customize the AI prompts used in each step of the analysis workflow.")
+    
+    # Import current prompts
+    from prompts.templates import (
+        DAM_ANALYST_ROLE, TASK_INSTRUCTIONS, OUTPUT_GUIDELINES,
+        JOB_AID_PROMPT, FINDINGS_PROMPT
+    )
+    
+    # Create tabs for each step
+    step_tabs = st.tabs(["🔍 Step 1: DAM Analysis", "📋 Step 2: Job Aid Assessment", "📤 Step 3: Findings Transmission"])
+    
+    with step_tabs[0]:
+        manage_step1_prompts(DAM_ANALYST_ROLE, TASK_INSTRUCTIONS, OUTPUT_GUIDELINES)
+    
+    with step_tabs[1]:
+        manage_step2_prompts(JOB_AID_PROMPT)
+    
+    with step_tabs[2]:
+        manage_step3_prompts(FINDINGS_PROMPT)
+
+
+def manage_step1_prompts(dam_analyst_role, task_instructions, output_guidelines):
+    """Manage Step 1 prompts."""
+    st.markdown("### Step 1: DAM Analysis Prompts")
+    st.markdown("Configure the prompts used for the initial DAM analysis by the AI analyst.")
+    
+    # DAM Analyst Role
+    st.markdown("#### 🎭 DAM Analyst Role")
+    st.markdown("Define the role and expertise of the AI analyst.")
+    
+    with st.expander("Current DAM Analyst Role", expanded=False):
+        st.text_area(
+            "Current Role Definition",
+            value=dam_analyst_role,
+            height=150,
+            disabled=True,
+            key="current_dam_role"
+        )
+    
+    # Editable version
+    new_dam_role = st.text_area(
+        "Edit DAM Analyst Role",
+        value=dam_analyst_role,
+        height=150,
+        help="Define the role, expertise, and characteristics of the AI DAM analyst.",
+        key="edit_dam_role"
+    )
+    
+    # Task Instructions
+    st.markdown("#### 📋 Task Instructions")
+    st.markdown("Define the specific tasks and analysis steps the AI should perform.")
+    
+    with st.expander("Current Task Instructions", expanded=False):
+        st.text_area(
+            "Current Instructions",
+            value=task_instructions,
+            height=200,
+            disabled=True,
+            key="current_task_instructions"
+        )
+    
+    new_task_instructions = st.text_area(
+        "Edit Task Instructions",
+        value=task_instructions,
+        height=200,
+        help="Specify the analysis steps and requirements for Step 1.",
+        key="edit_task_instructions"
+    )
+    
+    # Output Guidelines
+    st.markdown("#### 📄 Output Guidelines")
+    st.markdown("Define the expected output format and structure.")
+    
+    with st.expander("Current Output Guidelines", expanded=False):
+        st.text_area(
+            "Current Guidelines",
+            value=output_guidelines,
+            height=200,
+            disabled=True,
+            key="current_output_guidelines"
+        )
+    
+    new_output_guidelines = st.text_area(
+        "Edit Output Guidelines",
+        value=output_guidelines,
+        height=200,
+        help="Specify the required output format and structure for Step 1.",
+        key="edit_output_guidelines"
+    )
+    
+    # Save/Reset buttons
+    col1, col2, col3 = st.columns([1, 1, 2])
+    
+    with col1:
+        if st.button("💾 Save Step 1 Changes", key="save_step1"):
+            save_step1_prompts(new_dam_role, new_task_instructions, new_output_guidelines)
+            st.success("✅ Step 1 prompts saved successfully!")
+            st.rerun()
+    
+    with col2:
+        if st.button("🔄 Reset to Default", key="reset_step1"):
+            st.session_state.edit_dam_role = dam_analyst_role
+            st.session_state.edit_task_instructions = task_instructions
+            st.session_state.edit_output_guidelines = output_guidelines
+            st.info("🔄 Step 1 prompts reset to defaults")
+            st.rerun()
+
+
+def manage_step2_prompts(job_aid_prompt):
+    """Manage Step 2 prompts."""
+    st.markdown("### Step 2: Job Aid Assessment Prompts")
+    st.markdown("Configure the prompts used for the structured job aid assessment.")
+    
+    st.markdown("#### 📋 Job Aid Assessment Prompt")
+    st.markdown("Define how the AI should complete the job aid assessment.")
+    
+    with st.expander("Current Job Aid Prompt", expanded=False):
+        st.text_area(
+            "Current Prompt",
+            value=job_aid_prompt,
+            height=200,
+            disabled=True,
+            key="current_job_aid_prompt"
+        )
+    
+    new_job_aid_prompt = st.text_area(
+        "Edit Job Aid Assessment Prompt",
+        value=job_aid_prompt,
+        height=200,
+        help="Define how the AI should approach the structured job aid assessment.",
+        key="edit_job_aid_prompt"
+    )
+    
+    # Save/Reset buttons
+    col1, col2, col3 = st.columns([1, 1, 2])
+    
+    with col1:
+        if st.button("💾 Save Step 2 Changes", key="save_step2"):
+            save_step2_prompts(new_job_aid_prompt)
+            st.success("✅ Step 2 prompts saved successfully!")
+            st.rerun()
+    
+    with col2:
+        if st.button("🔄 Reset to Default", key="reset_step2"):
+            st.session_state.edit_job_aid_prompt = job_aid_prompt
+            st.info("🔄 Step 2 prompts reset to defaults")
+            st.rerun()
+
+
+def manage_step3_prompts(findings_prompt):
+    """Manage Step 3 prompts."""
+    st.markdown("### Step 3: Findings Transmission Prompts")
+    st.markdown("Configure the prompts used for generating final findings and reports.")
+    
+    st.markdown("#### 📤 Findings Generation Prompt")
+    st.markdown("Define how the AI should generate final findings and reports.")
+    
+    with st.expander("Current Findings Prompt", expanded=False):
+        st.text_area(
+            "Current Prompt",
+            value=findings_prompt,
+            height=300,
+            disabled=True,
+            key="current_findings_prompt"
+        )
+    
+    new_findings_prompt = st.text_area(
+        "Edit Findings Generation Prompt",
+        value=findings_prompt,
+        height=300,
+        help="Define how the AI should generate final findings, reports, and recommendations.",
+        key="edit_findings_prompt"
+    )
+    
+    # Save/Reset buttons
+    col1, col2, col3 = st.columns([1, 1, 2])
+    
+    with col1:
+        if st.button("💾 Save Step 3 Changes", key="save_step3"):
+            save_step3_prompts(new_findings_prompt)
+            st.success("✅ Step 3 prompts saved successfully!")
+            st.rerun()
+    
+    with col2:
+        if st.button("🔄 Reset to Default", key="reset_step3"):
+            st.session_state.edit_findings_prompt = findings_prompt
+            st.info("🔄 Step 3 prompts reset to defaults")
+            st.rerun()
+
+
+def create_system_settings_interface():
+    """Creates the system settings interface."""
+    st.subheader("🔧 System Settings")
+    st.markdown("Configure system-wide settings and parameters.")
+    
+    # Image validation settings
+    st.markdown("#### 📏 Image Validation Settings")
+    
+    from utils.validation_errors import ImageValidationError
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Minimum Dimensions:**")
+        min_width = st.number_input("Min Width (pixels)", value=ImageValidationError.MIN_WIDTH, min_value=1, max_value=1000)
+        min_height = st.number_input("Min Height (pixels)", value=ImageValidationError.MIN_HEIGHT, min_value=1, max_value=1000)
+    
+    with col2:
+        st.markdown("**Maximum Dimensions:**")
+        max_width = st.number_input("Max Width (pixels)", value=ImageValidationError.MAX_WIDTH, min_value=100, max_value=50000)
+        max_height = st.number_input("Max Height (pixels)", value=ImageValidationError.MAX_HEIGHT, min_value=100, max_value=50000)
+    
+    st.markdown("**File Size Limits:**")
+    max_file_size = st.number_input("Max File Size (MB)", value=ImageValidationError.MAX_FILE_SIZE_MB, min_value=1, max_value=100)
+    
+    if st.button("💾 Save System Settings"):
+        st.info("ℹ️ System settings are currently read-only. Contact administrator to modify validation parameters.")
+    
+    # AI Model settings
+    st.markdown("#### 🤖 AI Model Settings")
+    st.markdown("Configure AI model parameters and behavior.")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        temperature = st.slider("Temperature", min_value=0.0, max_value=2.0, value=0.7, step=0.1, help="Controls randomness in AI responses")
+        max_tokens = st.number_input("Max Output Tokens", value=8192, min_value=1000, max_value=32000, help="Maximum length of AI responses")
+    
+    with col2:
+        top_p = st.slider("Top P", min_value=0.0, max_value=1.0, value=0.9, step=0.1, help="Controls diversity of AI responses")
+        top_k = st.number_input("Top K", value=40, min_value=1, max_value=100, help="Limits vocabulary for AI responses")
+    
+    if st.button("💾 Save AI Settings"):
+        st.info("ℹ️ AI model settings will be implemented in a future update.")
+
+
+def create_analytics_interface():
+    """Creates the analytics interface."""
+    st.subheader("📊 Analytics & Usage")
+    st.markdown("View system usage statistics and performance metrics.")
+    
+    # Mock analytics data
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Total Analyses", "1,234", "+12%")
+        st.metric("Success Rate", "94.2%", "+2.1%")
+    
+    with col2:
+        st.metric("Avg Processing Time", "45.3s", "-5.2s")
+        st.metric("Images Processed", "2,156", "+18%")
+    
+    with col3:
+        st.metric("Error Rate", "5.8%", "-2.1%")
+        st.metric("User Sessions", "456", "+8%")
+    
+    st.markdown("#### 📈 Usage Trends")
+    st.info("📊 Detailed analytics dashboard coming soon!")
+    
+    st.markdown("#### 🔍 Recent Activity")
+    st.info("📝 Activity logs and audit trail coming soon!")
+
+
+def save_step1_prompts(dam_role, task_instructions, output_guidelines):
+    """Save Step 1 prompts to file."""
+    try:
+        # Read current file
+        with open('prompts/templates.py', 'r') as f:
+            content = f.read()
+        
+        # Update DAM_ANALYST_ROLE
+        content = update_prompt_in_content(content, 'DAM_ANALYST_ROLE', dam_role)
+        content = update_prompt_in_content(content, 'TASK_INSTRUCTIONS', task_instructions)
+        content = update_prompt_in_content(content, 'OUTPUT_GUIDELINES', output_guidelines)
+        
+        # Write back to file
+        with open('prompts/templates.py', 'w') as f:
+            f.write(content)
+        
+        return True
+    except Exception as e:
+        st.error(f"Error saving Step 1 prompts: {str(e)}")
+        return False
+
+
+def save_step2_prompts(job_aid_prompt):
+    """Save Step 2 prompts to file."""
+    try:
+        # Read current file
+        with open('prompts/templates.py', 'r') as f:
+            content = f.read()
+        
+        # Update JOB_AID_PROMPT
+        content = update_prompt_in_content(content, 'JOB_AID_PROMPT', job_aid_prompt)
+        
+        # Write back to file
+        with open('prompts/templates.py', 'w') as f:
+            f.write(content)
+        
+        return True
+    except Exception as e:
+        st.error(f"Error saving Step 2 prompts: {str(e)}")
+        return False
+
+
+def save_step3_prompts(findings_prompt):
+    """Save Step 3 prompts to file."""
+    try:
+        # Read current file
+        with open('prompts/templates.py', 'r') as f:
+            content = f.read()
+        
+        # Update FINDINGS_PROMPT
+        content = update_prompt_in_content(content, 'FINDINGS_PROMPT', findings_prompt)
+        
+        # Write back to file
+        with open('prompts/templates.py', 'w') as f:
+            f.write(content)
+        
+        return True
+    except Exception as e:
+        st.error(f"Error saving Step 3 prompts: {str(e)}")
+        return False
+
+
+def update_prompt_in_content(content, variable_name, new_value):
+    """Update a prompt variable in the file content."""
+    import re
+    
+    # Escape the new value for use in regex replacement
+    escaped_value = new_value.replace('\\', '\\\\').replace('"', '\\"')
+    
+    # Pattern to match the variable assignment
+    pattern = f'{variable_name} = """([^"]*(?:"[^"]*"[^"]*)*)"""'
+    
+    # Replace with new value
+    replacement = f'{variable_name} = """{escaped_value}"""'
+    
+    # Perform replacement
+    new_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+    
+    return new_content
+
+
 def main():
     """Main application entry point."""
     # Create the main interface
     create_main_interface()
     
-    # Display usage instructions
-    display_instructions()
+    # Create main tabs
+    main_tabs = st.tabs(["🔍 Analysis Workflow", "⚙️ Settings"])
     
-    # Image upload section
-    image_bytes = create_image_upload_section()
+    with main_tabs[0]:
+        # Display usage instructions
+        display_instructions()
+        
+        # Image upload section
+        image_bytes = create_image_upload_section()
+        
+        st.markdown("---")
+        
+        # Metadata input section
+        metadata = create_metadata_input_section()
+        
+        # Workflow execution interface
+        display_workflow_execution_interface(image_bytes, metadata)
     
-    st.markdown("---")
-    
-    # Metadata input section
-    metadata = create_metadata_input_section()
-    
-    # Workflow execution interface
-    display_workflow_execution_interface(image_bytes, metadata)
+    with main_tabs[1]:
+        create_settings_interface()
 
 
 if __name__ == "__main__":
