@@ -1406,24 +1406,59 @@ def create_analytics_interface():
 
 
 def save_step1_prompts(dam_role, task_instructions, output_guidelines):
-    """Save Step 1 prompts to file."""
+    """Save Step 1 prompts to file with backup and error handling."""
     try:
+        # Create backup first
+        backup_path = 'prompts/templates.py.backup'
+        with open('prompts/templates.py', 'r') as src, open(backup_path, 'w') as dst:
+            dst.write(src.read())
+        
         # Read current file
         with open('prompts/templates.py', 'r') as f:
             content = f.read()
         
-        # Update DAM_ANALYST_ROLE
-        content = update_prompt_in_content(content, 'DAM_ANALYST_ROLE', dam_role)
-        content = update_prompt_in_content(content, 'TASK_INSTRUCTIONS', task_instructions)
-        content = update_prompt_in_content(content, 'OUTPUT_GUIDELINES', output_guidelines)
+        # Update prompts one by one with error handling
+        try:
+            content = update_prompt_in_content(content, 'DAM_ANALYST_ROLE', dam_role)
+            content = update_prompt_in_content(content, 'TASK_INSTRUCTIONS', task_instructions)
+            content = update_prompt_in_content(content, 'OUTPUT_GUIDELINES', output_guidelines)
+        except Exception as update_error:
+            logger.error(f"Error updating prompt content: {str(update_error)}")
+            st.error(f"Error updating prompts: {str(update_error)}")
+            return False
+        
+        # Validate the updated content by trying to compile it
+        try:
+            compile(content, 'prompts/templates.py', 'exec')
+        except SyntaxError as syntax_error:
+            logger.error(f"Syntax error in updated prompts: {str(syntax_error)}")
+            st.error(f"Syntax error in updated prompts. Changes not saved.")
+            return False
         
         # Write back to file
         with open('prompts/templates.py', 'w') as f:
             f.write(content)
         
+        # Remove backup if successful
+        import os
+        os.remove(backup_path)
+        
         return True
+        
     except Exception as e:
+        logger.error(f"Error saving Step 1 prompts: {str(e)}")
         st.error(f"Error saving Step 1 prompts: {str(e)}")
+        
+        # Try to restore from backup
+        try:
+            if os.path.exists(backup_path):
+                with open(backup_path, 'r') as src, open('prompts/templates.py', 'w') as dst:
+                    dst.write(src.read())
+                os.remove(backup_path)
+                st.warning("Restored from backup due to error.")
+        except:
+            pass
+        
         return False
 
 
@@ -1468,22 +1503,304 @@ def save_step3_prompts(findings_prompt):
 
 
 def update_prompt_in_content(content, variable_name, new_value):
-    """Update a prompt variable in the file content."""
+    """Update a prompt variable in the file content safely."""
     import re
     
-    # Escape the new value for use in regex replacement
-    escaped_value = new_value.replace('\\', '\\\\').replace('"', '\\"')
+    try:
+        # Simple and safe approach - just replace the content between triple quotes
+        # First, escape any triple quotes in the new value to prevent syntax errors
+        safe_value = new_value.replace('"""', '\\"""')
+        
+        # Pattern to match variable assignment with triple quotes
+        pattern = rf'({re.escape(variable_name)}\s*=\s*""").*?(""")'
+        
+        # Replacement with the new value
+        replacement = rf'\g<1>{safe_value}\g<2>'
+        
+        # Perform the replacement
+        new_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+        
+        return new_content
+        
+    except Exception as e:
+        logger.error(f"Error updating prompt content for {variable_name}: {str(e)}")
+        # Return original content if update fails
+        return content
+
+
+def create_settings_interface():
+    """Creates the settings interface for managing workflow prompts and schemas."""
+    st.header("⚙️ Settings")
+    st.markdown("Manage and customize the AI prompts and schemas for the workflow.")
     
-    # Pattern to match the variable assignment
-    pattern = f'{variable_name} = """([^"]*(?:"[^"]*"[^"]*)*)"""'
+    # Create tabs for different settings sections
+    settings_tabs = st.tabs(["📝 Prompt Management", "📋 Schema Management", "🔧 System Settings"])
     
-    # Replace with new value
-    replacement = f'{variable_name} = """{escaped_value}"""'
+    with settings_tabs[0]:
+        create_prompt_management_interface()
     
-    # Perform replacement
-    new_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+    with settings_tabs[1]:
+        create_schema_management_interface()
     
-    return new_content
+    with settings_tabs[2]:
+        create_system_settings_interface()
+
+
+def create_prompt_management_interface():
+    """Creates the prompt management interface."""
+    st.subheader("📝 Workflow Prompt Management")
+    st.markdown("Customize the AI prompts used in each step of the analysis workflow.")
+    
+    # Import current prompts
+    from prompts.templates import (
+        DAM_ANALYST_ROLE, TASK_INSTRUCTIONS, OUTPUT_GUIDELINES,
+        JOB_AID_PROMPT, FINDINGS_PROMPT
+    )
+    
+    # Create tabs for each step
+    step_tabs = st.tabs(["🔍 Step 1: DAM Analysis", "📋 Step 2: Job Aid Assessment", "📤 Step 3: Findings Transmission"])
+    
+    with step_tabs[0]:
+        manage_step1_prompts(DAM_ANALYST_ROLE, TASK_INSTRUCTIONS, OUTPUT_GUIDELINES)
+    
+    with step_tabs[1]:
+        manage_step2_prompts(JOB_AID_PROMPT)
+    
+    with step_tabs[2]:
+        manage_step3_prompts(FINDINGS_PROMPT)
+
+
+def create_schema_management_interface():
+    """Creates the schema management interface."""
+    st.subheader("📋 Job Aid Schema Management")
+    st.markdown("Customize the job aid schema that defines the structure for Step 2 compliance assessment.")
+    
+    # Import current schema
+    from schemas.job_aid import DIGITAL_COMPONENT_ANALYSIS_SCHEMA
+    
+    # Display current schema
+    st.markdown("#### 📊 Current Job Aid Schema")
+    st.markdown("This schema defines the structure and validation rules for the job aid assessment in Step 2.")
+    
+    # Show schema in a more readable format
+    with st.expander("📖 View Current Schema Structure", expanded=False):
+        st.json(DIGITAL_COMPONENT_ANALYSIS_SCHEMA)
+    
+    # Schema editing interface
+    st.markdown("#### ✏️ Edit Job Aid Schema")
+    st.markdown("**⚠️ Warning:** Modifying the schema may affect the workflow. Ensure the schema is valid JSON before saving.")
+    
+    # Convert schema to formatted JSON string for editing
+    current_schema_json = json.dumps(DIGITAL_COMPONENT_ANALYSIS_SCHEMA, indent=2)
+    
+    # Text area for schema editing
+    new_schema_json = st.text_area(
+        "Edit Job Aid Schema (JSON Format)",
+        value=current_schema_json,
+        height=400,
+        help="Edit the job aid schema in JSON format. This defines the structure for Step 2 assessments.",
+        key="edit_job_aid_schema"
+    )
+    
+    # Validation and preview
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🔍 Validate Schema", key="validate_schema"):
+            try:
+                # Try to parse the JSON
+                parsed_schema = json.loads(new_schema_json)
+                
+                # Basic validation - check if it has the expected structure
+                if "type" in parsed_schema and "properties" in parsed_schema:
+                    st.success("✅ Schema JSON is valid!")
+                    
+                    # Show a preview of the changes
+                    with st.expander("📋 Schema Preview"):
+                        st.json(parsed_schema)
+                else:
+                    st.warning("⚠️ Schema structure may be incomplete. Ensure it has 'type' and 'properties' fields.")
+                    
+            except json.JSONDecodeError as e:
+                st.error(f"❌ Invalid JSON: {str(e)}")
+            except Exception as e:
+                st.error(f"❌ Schema validation error: {str(e)}")
+    
+    with col2:
+        if st.button("💾 Save Schema Changes", key="save_schema"):
+            try:
+                # Validate JSON first
+                parsed_schema = json.loads(new_schema_json)
+                
+                # Save the schema
+                if save_job_aid_schema(parsed_schema):
+                    st.success("✅ Job aid schema saved successfully!")
+                    st.info("🔄 Changes will take effect on the next workflow run.")
+                    st.rerun()
+                else:
+                    st.error("❌ Failed to save schema changes.")
+                    
+            except json.JSONDecodeError as e:
+                st.error(f"❌ Cannot save invalid JSON: {str(e)}")
+            except Exception as e:
+                st.error(f"❌ Error saving schema: {str(e)}")
+    
+    # Reset functionality
+    if st.button("🔄 Reset Schema to Default", key="reset_schema"):
+        st.session_state.edit_job_aid_schema = current_schema_json
+        st.info("🔄 Schema reset to default values")
+        st.rerun()
+    
+    # Schema documentation
+    st.markdown("#### 📚 Schema Documentation")
+    with st.expander("📖 Understanding the Job Aid Schema"):
+        st.markdown("""
+        The job aid schema defines the structure for Step 2 compliance assessment. Key sections include:
+        
+        **Component Specifications:**
+        - File format requirements and restrictions
+        - Resolution requirements (minimum/optimal)
+        - Color profile requirements
+        - Naming convention requirements
+        
+        **Component Metadata:**
+        - Required and optional metadata fields
+        - Validation rules for metadata
+        
+        **Component QC (Quality Control):**
+        - Visual quality checks (clarity, lighting, composition, color accuracy)
+        - Technical quality checks (compression artifacts, noise levels, sharpness)
+        - Compliance checks (brand guidelines, legal requirements, accessibility)
+        
+        **Component Linking:**
+        - Relationship requirements
+        - Dependency checks
+        
+        **Material Distribution Package QC:**
+        - Package integrity checks
+        - Distribution readiness checks
+        
+        Each section includes assessment fields (PASS/FAIL/NEEDS_REVIEW) and notes for detailed feedback.
+        """)
+
+
+def manage_step1_prompts(dam_analyst_role, task_instructions, output_guidelines):
+    """Manage Step 1 prompts - simplified version."""
+    st.markdown("### Step 1: DAM Analysis Prompts")
+    
+    # Show current prompts in expandable sections
+    with st.expander("🎭 Current DAM Analyst Role"):
+        st.text_area("", value=dam_analyst_role, height=100, disabled=True, key="view_dam_role")
+    
+    with st.expander("📋 Current Task Instructions"):
+        st.text_area("", value=task_instructions, height=150, disabled=True, key="view_task_instructions")
+    
+    with st.expander("📄 Current Output Guidelines"):
+        st.text_area("", value=output_guidelines, height=150, disabled=True, key="view_output_guidelines")
+    
+    st.info("💡 Prompt editing functionality will be restored in a future update.")
+
+
+def manage_step2_prompts(job_aid_prompt):
+    """Manage Step 2 prompts - simplified version."""
+    st.markdown("### Step 2: Job Aid Assessment Prompts")
+    
+    with st.expander("📋 Current Job Aid Prompt"):
+        st.text_area("", value=job_aid_prompt, height=200, disabled=True, key="view_job_aid_prompt")
+    
+    st.info("💡 Prompt editing functionality will be restored in a future update.")
+
+
+def manage_step3_prompts(findings_prompt):
+    """Manage Step 3 prompts - simplified version."""
+    st.markdown("### Step 3: Findings Transmission Prompts")
+    
+    with st.expander("📤 Current Findings Prompt"):
+        st.text_area("", value=findings_prompt, height=300, disabled=True, key="view_findings_prompt")
+    
+    st.info("💡 Prompt editing functionality will be restored in a future update.")
+
+
+def create_system_settings_interface():
+    """Creates the system settings interface."""
+    st.subheader("🔧 System Settings")
+    st.markdown("View system configuration and parameters.")
+    
+    # Image validation settings (read-only for now)
+    st.markdown("#### 📏 Image Validation Settings")
+    
+    from utils.validation_errors import ImageValidationError
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Minimum Dimensions:**")
+        st.text(f"Min Width: {ImageValidationError.MIN_WIDTH} pixels")
+        st.text(f"Min Height: {ImageValidationError.MIN_HEIGHT} pixels")
+    
+    with col2:
+        st.markdown("**Maximum Dimensions:**")
+        st.text(f"Max Width: {ImageValidationError.MAX_WIDTH} pixels")
+        st.text(f"Max Height: {ImageValidationError.MAX_HEIGHT} pixels")
+    
+    st.markdown("**File Size Limits:**")
+    st.text(f"Max File Size: {ImageValidationError.MAX_FILE_SIZE_MB} MB")
+    
+    st.info("💡 System settings editing will be available in a future update.")
+
+
+def save_job_aid_schema(schema_dict):
+    """Save the job aid schema to file."""
+    try:
+        # Create backup first
+        backup_path = 'schemas/job_aid.py.backup'
+        with open('schemas/job_aid.py', 'r') as src, open(backup_path, 'w') as dst:
+            dst.write(src.read())
+        
+        # Read current file
+        with open('schemas/job_aid.py', 'r') as f:
+            content = f.read()
+        
+        # Update the schema in the file content
+        schema_json = json.dumps(schema_dict, indent=4)
+        
+        # Find and replace the DIGITAL_COMPONENT_ANALYSIS_SCHEMA
+        import re
+        pattern = r'(DIGITAL_COMPONENT_ANALYSIS_SCHEMA\s*=\s*){.*?}(?=\n\n|\n#|\nFINDINGS_OUTPUT_SCHEMA|\Z)'
+        replacement = f'\\1{schema_json}'
+        
+        new_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+        
+        # Validate the updated content
+        try:
+            compile(new_content, 'schemas/job_aid.py', 'exec')
+        except SyntaxError as e:
+            logger.error(f"Syntax error in updated schema: {str(e)}")
+            return False
+        
+        # Write back to file
+        with open('schemas/job_aid.py', 'w') as f:
+            f.write(new_content)
+        
+        # Remove backup if successful
+        import os
+        os.remove(backup_path)
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error saving job aid schema: {str(e)}")
+        
+        # Try to restore from backup
+        try:
+            if os.path.exists(backup_path):
+                with open(backup_path, 'r') as src, open('schemas/job_aid.py', 'w') as dst:
+                    dst.write(src.read())
+                os.remove(backup_path)
+        except:
+            pass
+        
+        return False
 
 
 def main():
