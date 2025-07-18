@@ -323,23 +323,39 @@ def display_step1_results(step_data: Dict[str, Any]):
         st.subheader("📋 Job Aid Assessment")
         job_aid = step_data["job_aid_assessment"]
         
-        # Display as formatted cards if we have a reasonable number of items
-        if len(job_aid) <= 4:
-            cols = st.columns(len(job_aid))
-            for i, (key, value) in enumerate(job_aid.items()):
-                with cols[i]:
-                    st.metric(
-                        label=key.replace("_", " ").title(),
-                        value=str(value)
-                    )
-        else:
-            # Display as a formatted list for many items
-            for key, value in job_aid.items():
-                st.markdown(f"**{key.replace('_', ' ').title()}:** {value}")
+        # Parse job aid if it's a string
+        if isinstance(job_aid, str):
+            try:
+                import json
+                job_aid = json.loads(job_aid)
+            except json.JSONDecodeError:
+                # If it's not valid JSON, display as text
+                st.markdown(job_aid)
+                return
         
-        # Also show raw JSON in expander
-        with st.expander("View Raw JSON"):
-            st.json(job_aid)
+        # Ensure job_aid is a dictionary
+        if isinstance(job_aid, dict):
+            # Display as formatted cards if we have a reasonable number of items
+            if len(job_aid) <= 4:
+                cols = st.columns(len(job_aid))
+                for i, (key, value) in enumerate(job_aid.items()):
+                    with cols[i]:
+                        st.metric(
+                            label=key.replace("_", " ").title(),
+                            value=str(value)
+                        )
+            else:
+                # Display as a formatted list for many items
+                for key, value in job_aid.items():
+                    st.markdown(f"**{key.replace('_', ' ').title()}:** {value}")
+            
+            # Also show raw JSON in expander
+            with st.expander("View Raw JSON"):
+                st.json(job_aid)
+        else:
+            # If it's not a dict, display as text
+            st.markdown(str(job_aid))
+        
         st.markdown("---")
     
     # Human-Readable Summary
