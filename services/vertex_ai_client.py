@@ -211,10 +211,21 @@ class GeminiClient:
                     if category and threshold:
                         gemini_safety_settings[category] = threshold
                 
-                # Create the content parts
+                # Create the content parts in the correct format
                 contents = [
-                    {"image": image_data},
-                    {"text": request.text_prompt}
+                    {
+                        "parts": [
+                            {
+                                "inline_data": {
+                                    "mime_type": request.mime_type,
+                                    "data": base64.b64encode(request.image_bytes).decode('utf-8')
+                                }
+                            },
+                            {
+                                "text": request.text_prompt
+                            }
+                        ]
+                    }
                 ]
                 
                 # Generate response
