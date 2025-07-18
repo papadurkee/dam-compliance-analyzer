@@ -89,6 +89,55 @@ def get_image_metadata(image: Image.Image) -> Dict[str, Any]:
     }
 
 
+def get_mime_type_from_format(image_format: str) -> str:
+    """
+    Get the correct MIME type for an image format.
+    
+    Args:
+        image_format: PIL image format (e.g., 'JPEG', 'PNG')
+        
+    Returns:
+        str: MIME type for the image format
+    """
+    format_to_mime = {
+        'JPEG': 'image/jpeg',
+        'JPG': 'image/jpeg',
+        'PNG': 'image/png',
+        'WEBP': 'image/webp',
+        'GIF': 'image/gif',
+        'BMP': 'image/bmp',
+        'TIFF': 'image/tiff'
+    }
+    
+    return format_to_mime.get(image_format.upper(), 'image/jpeg')  # Default to JPEG
+
+
+def detect_image_format_from_bytes(image_bytes: bytes) -> str:
+    """
+    Detect image format from raw bytes.
+    
+    Args:
+        image_bytes: Raw image bytes
+        
+    Returns:
+        str: Detected image format
+    """
+    try:
+        from PIL import Image
+        import io
+        
+        # Create a BytesIO object from the bytes
+        image_stream = io.BytesIO(image_bytes)
+        
+        # Open the image to detect format
+        with Image.open(image_stream) as img:
+            return img.format or 'JPEG'
+            
+    except Exception:
+        # Default to JPEG if detection fails
+        return 'JPEG'
+
+
 def resize_image_if_needed(image: Image.Image, max_width: int = 800) -> Image.Image:
     """
     Resizes an image for display if it exceeds the maximum width.

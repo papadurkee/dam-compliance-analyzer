@@ -147,9 +147,18 @@ class BaseProcessor(ABC):
             ProcessingError: If the request fails
         """
         try:
+            # Detect the correct MIME type for the image
+            from utils.image_processing import detect_image_format_from_bytes, get_mime_type_from_format
+            
+            image_format = detect_image_format_from_bytes(image_bytes)
+            mime_type = get_mime_type_from_format(image_format)
+            
+            logger.info(f"Detected image format: {image_format}, using MIME type: {mime_type}")
+            
             request = MultimodalRequest(
                 image_bytes=image_bytes,
-                text_prompt=prompt
+                text_prompt=prompt,
+                mime_type=mime_type
             )
             
             response = await self.ai_client.process_multimodal_request(request)

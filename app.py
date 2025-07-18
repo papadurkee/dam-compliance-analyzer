@@ -1108,8 +1108,8 @@ def display_instructions():
         - **Step 3: Findings Transmission** - Final results in JSON and human-readable formats
         
         ### Supported File Formats:
-        - JPG/JPEG images
-        - PNG images
+        - JPG/JPEG images (with EXIF metadata support)
+        - PNG images (with custom metadata support)
         - Maximum file size: 10MB
         
         ### Metadata Format:
