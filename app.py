@@ -49,59 +49,247 @@ def display_file_details(uploaded_file, image, embedded_metadata):
     st.markdown(f"• **Dimensions:** {image.width} x {image.height}")
     st.markdown(f"• **Format:** {image.format}")
     
-    # EXIF metadata indicator and details
-    if embedded_metadata.get('has_exif'):
-        st.success("📋 EXIF metadata detected!")
+    # Metadata indicator and details
+    has_custom_metadata = embedded_metadata.get('has_custom_metadata', False)
+    has_exif = embedded_metadata.get('has_exif', False)
+    
+    if has_custom_metadata or has_exif:
+        if has_custom_metadata:
+            st.success("📋 EXIF metadata detected!")  # Keep the same message for consistency
+        else:
+            st.success("📋 EXIF metadata detected!")
         
         # Show DAM-relevant metadata if available
         if 'dam_relevant' in embedded_metadata:
             dam_data = embedded_metadata['dam_relevant']
             
             # Display key metadata fields in bullet format
-            if 'photographer' in dam_data:
-                st.markdown(f"• **Photographer:** {dam_data['photographer']}")
-            if 'copyright' in dam_data:
-                st.markdown(f"• **Copyright:** {dam_data['copyright']}")
-            if 'shoot_date' in dam_data:
-                st.markdown(f"• **Date Taken:** {dam_data['shoot_date']}")
-            if 'camera_make' in dam_data:
-                camera_info = dam_data['camera_make']
-                if 'camera_model' in dam_data:
-                    camera_info += f" {dam_data['camera_model']}"
-                st.markdown(f"• **Camera:** {camera_info}")
+            # Prioritize custom metadata fields
+            if 'component_id' in dam_data:
+                st.markdown(f"• **Component ID:** {dam_data['component_id']}")
+            if 'component_name' in dam_data:
+                st.markdown(f"• **Component Name:** {dam_data['component_name']}")
+            if 'component_type' in dam_data:
+                st.markdown(f"• **Type:** {dam_data['component_type']}")
+            if 'status' in dam_data:
+                st.markdown(f"• **Status:** {dam_data['status']}")
+            if 'version' in dam_data:
+                st.markdown(f"• **Version:** {dam_data['version']}")
+            if 'creation_date' in dam_data:
+                st.markdown(f"• **Created:** {dam_data['creation_date']}")
             
-            # Technical settings
-            tech_settings = []
-            if 'iso_speed' in dam_data:
-                tech_settings.append(f"ISO {dam_data['iso_speed']}")
-            if 'aperture' in dam_data:
-                tech_settings.append(f"f/{dam_data['aperture']}")
-            if 'exposure_time' in dam_data:
-                tech_settings.append(f"{dam_data['exposure_time']}s")
+            # Show usage rights if available
+            if 'usage_rights' in dam_data:
+                usage_rights = dam_data['usage_rights']
+                if isinstance(usage_rights, dict):
+                    if 'licenseType' in usage_rights:
+                        st.markdown(f"• **License:** {usage_rights['licenseType']}")
+                    if 'usageRestrictions' in usage_rights:
+                        st.markdown(f"• **Usage:** {usage_rights['usageRestrictions']}")
             
-            if tech_settings:
-                st.markdown(f"• **Camera Settings:** {', '.join(tech_settings)}")
+            # Show restrictions
+            if 'geographic_restrictions' in dam_data:
+                restrictions = dam_data['geographic_restrictions']
+                if restrictions:
+                    st.markdown(f"• **Geographic:** {', '.join(restrictions)}")
             
-            # Location data
-            if dam_data.get('has_location_data'):
-                st.markdown("• **Location:** GPS data available")
+            if 'channel_restrictions' in dam_data:
+                channels = dam_data['channel_restrictions']
+                if channels:
+                    st.markdown(f"• **Channels:** {', '.join(channels)}")
+            
+            # Fallback to traditional EXIF fields if no custom metadata
+            if not has_custom_metadata:
+                if 'photographer' in dam_data:
+                    st.markdown(f"• **Photographer:** {dam_data['photographer']}")
+                if 'copyright' in dam_data:
+                    st.markdown(f"• **Copyright:** {dam_data['copyright']}")
+                if 'shoot_date' in dam_data:
+                    st.markdown(f"• **Date Taken:** {dam_data['shoot_date']}")
+                if 'camera_make' in dam_data:
+                    camera_info = dam_data['camera_make']
+                    if 'camera_model' in dam_data:
+                        camera_info += f" {dam_data['camera_model']}"
+                    st.markdown(f"• **Camera:** {camera_info}")
+                
+                # Technical settings
+                tech_settings = []
+                if 'iso_speed' in dam_data:
+                    tech_settings.append(f"ISO {dam_data['iso_speed']}")
+                if 'aperture' in dam_data:
+                    tech_settings.append(f"f/{dam_data['aperture']}")
+                if 'exposure_time' in dam_data:
+                    tech_settings.append(f"{dam_data['exposure_time']}s")
+                
+                if tech_settings:
+                    st.markdown(f"• **Camera Settings:** {', '.join(tech_settings)}")
+                
+                # Location data
+                if dam_data.get('has_location_data'):
+                    st.markdown("• **Location:** GPS data available")
             
             # Show expandable detailed metadata
-            with st.expander("🔍 View All EXIF Data"):
+            with st.expander("🔍 View All Metadata"):
+                if has_custom_metadata:
+                    custom_data = embedded_metadata.get('custom_metadata', {})
+                    if custom_data:
+                        st.markdown("**Custom Metadata:**")
+                        for key, value in custom_data.items():
+                            if isinstance(value, dict):
+                                st.json(value)
+                            else:
+                                st.markdown(f"**{key}:** {value}")
+                
                 exif_data = embedded_metadata.get('exif_data', {})
                 if exif_data:
+                    st.markdown("**EXIF Data:**")
                     for key, value in exif_data.items():
                         if key != 'extraction_error':
                             st.markdown(f"**{key}:** {value}")
-                else:
-                    st.info("No detailed EXIF data available")
+                
+                if not custom_data and not exif_data:
+                    st.info("No detailed metadata available")
     else:
-        st.info("ℹ️ No EXIF metadata found in this image")
+        st.info("ℹ️ No metadata found in this image")
 
 
 def create_metadata_from_exif(filename, embedded_metadata):
     """
-    Create a JSON metadata structure from EXIF data.
+    Create a JSON metadata structure from EXIF and custom metadata.
+    
+    Args:
+        filename: Name of the uploaded file
+        embedded_metadata: Extracted metadata dictionary
+        
+    Returns:
+        Dict[str, Any]: JSON metadata structure populated with extracted data
+    """
+    # Check if we have custom metadata (like componentMetadata)
+    custom_metadata = embedded_metadata.get('custom_metadata', {})
+    
+    # If we found embedded JSON metadata, use it as the primary source
+    if custom_metadata:
+        # Look for componentMetadata in various locations
+        component_metadata = None
+        
+        # Check different possible locations for the metadata
+        for key, value in custom_metadata.items():
+            if isinstance(value, dict):
+                if 'componentMetadata' in value:
+                    component_metadata = value['componentMetadata']
+                    break
+                elif 'id' in value and 'name' in value:
+                    # Direct component metadata
+                    component_metadata = value
+                    break
+        
+        if component_metadata:
+            # Convert the embedded metadata to our expected format
+            return convert_component_metadata_to_standard_format(component_metadata, embedded_metadata)
+    
+    # Fallback to EXIF-based metadata creation
+    return create_metadata_from_exif_fallback(filename, embedded_metadata)
+
+
+def convert_component_metadata_to_standard_format(component_metadata, embedded_metadata):
+    """
+    Convert componentMetadata format to our standard metadata format.
+    
+    Args:
+        component_metadata: The componentMetadata object from the image
+        embedded_metadata: Full embedded metadata for additional info
+        
+    Returns:
+        Dict[str, Any]: Converted metadata in standard format
+    """
+    # Start with default structure
+    metadata = get_default_metadata_structure()
+    
+    # Map componentMetadata fields to our format
+    if 'id' in component_metadata:
+        metadata['component_id'] = component_metadata['id']
+    
+    if 'name' in component_metadata:
+        metadata['component_name'] = component_metadata['name']
+    
+    if 'description' in component_metadata:
+        metadata['description'] = component_metadata['description']
+    
+    # Map usage rights
+    if 'usageRights' in component_metadata:
+        usage_rights = component_metadata['usageRights']
+        metadata['usage_rights'] = {
+            'commercial_use': usage_rights.get('licenseType', ''),
+            'editorial_use': usage_rights.get('owner', ''),
+            'restrictions': usage_rights.get('usageRestrictions', '')
+        }
+    
+    # Map geographic restrictions
+    if 'geographicRestrictions' in component_metadata:
+        metadata['geographic_restrictions'] = component_metadata['geographicRestrictions']
+    
+    # Map channel requirements
+    if 'channelRestrictions' in component_metadata:
+        channels = component_metadata['channelRestrictions']
+        metadata['channel_requirements'] = {
+            'web': 'Digital' in channels,
+            'print': 'Print' in channels,
+            'social_media': 'Social Media' in channels,
+            'broadcast': 'Broadcast' in channels if 'Broadcast' in channels else ''
+        }
+    
+    # Map file specifications
+    file_specs = {}
+    if 'fileFormat' in component_metadata:
+        file_specs['format'] = component_metadata['fileFormat']
+    
+    if 'dimensions' in component_metadata:
+        dims = component_metadata['dimensions']
+        if 'width' in dims and 'height' in dims:
+            file_specs['resolution'] = f"{dims['width']}x{dims['height']}"
+    
+    if 'colorSpace' in component_metadata:
+        file_specs['color_profile'] = component_metadata['colorSpace']
+    
+    if 'fileSize' in component_metadata:
+        file_specs['file_size'] = component_metadata['fileSize']
+    
+    metadata['file_specifications'] = file_specs
+    
+    # Add additional metadata fields
+    additional_metadata = {}
+    
+    if 'version' in component_metadata:
+        additional_metadata['version'] = component_metadata['version']
+    
+    if 'creationDate' in component_metadata:
+        additional_metadata['creation_date'] = component_metadata['creationDate']
+    
+    if 'lastModifiedDate' in component_metadata:
+        additional_metadata['last_modified_date'] = component_metadata['lastModifiedDate']
+    
+    if 'status' in component_metadata:
+        additional_metadata['status'] = component_metadata['status']
+    
+    if 'componentType' in component_metadata:
+        additional_metadata['component_type'] = component_metadata['componentType']
+    
+    if 'lifespan' in component_metadata:
+        lifespan = component_metadata['lifespan']
+        additional_metadata['lifespan'] = {
+            'start_date': lifespan.get('startDate', ''),
+            'end_date': lifespan.get('endDate', '')
+        }
+    
+    if additional_metadata:
+        metadata['additional_metadata'] = additional_metadata
+    
+    return metadata
+
+
+def create_metadata_from_exif_fallback(filename, embedded_metadata):
+    """
+    Fallback method to create metadata from EXIF data when no custom metadata is found.
     
     Args:
         filename: Name of the uploaded file

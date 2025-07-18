@@ -154,7 +154,7 @@ def extract_exif_metadata(image: Image.Image) -> Dict[str, Any]:
 
 def extract_embedded_metadata(image_file: Any) -> Dict[str, Any]:
     """
-    Extracts all available embedded metadata from an image file.
+    Extracts all available embedded metadata from an image file, including custom JSON metadata.
     
     Args:
         image_file: The uploaded file object from Streamlit
@@ -163,6 +163,9 @@ def extract_embedded_metadata(image_file: Any) -> Dict[str, Any]:
         Dict[str, Any]: Dictionary containing all extracted metadata
     """
     try:
+        # Reset file pointer to beginning
+        image_file.seek(0)
+        
         # Open image
         image = Image.open(image_file)
         
@@ -172,15 +175,26 @@ def extract_embedded_metadata(image_file: Any) -> Dict[str, Any]:
         # Get EXIF metadata
         exif_metadata = extract_exif_metadata(image)
         
+        # Try to extract custom metadata from various sources
+        custom_metadata = extract_custom_metadata(image, image_file)
+        
+        # Determine if we have any metadata
+        has_metadata = (
+            (len(exif_metadata) > 0 and 'extraction_error' not in exif_metadata) or
+            bool(custom_metadata)
+        )
+        
         # Combine all metadata
         embedded_metadata = {
             "basic_info": basic_metadata,
             "exif_data": exif_metadata,
-            "has_exif": len(exif_metadata) > 0 and 'extraction_error' not in exif_metadata
+            "custom_metadata": custom_metadata,
+            "has_exif": has_metadata,  # Renamed to has_metadata since it includes custom data too
+            "has_custom_metadata": bool(custom_metadata)
         }
         
         # Extract commonly used fields for DAM compliance
-        dam_relevant_metadata = extract_dam_relevant_fields(exif_metadata)
+        dam_relevant_metadata = extract_dam_relevant_fields(exif_metadata, custom_metadata)
         if dam_relevant_metadata:
             embedded_metadata["dam_relevant"] = dam_relevant_metadata
         
@@ -191,24 +205,229 @@ def extract_embedded_metadata(image_file: Any) -> Dict[str, Any]:
             "extraction_error": str(e),
             "basic_info": {},
             "exif_data": {},
-            "has_exif": False
+            "custom_metadata": {},
+            "has_exif": False,
+            "has_custom_metadata": False
         }
 
 
-def extract_dam_relevant_fields(exif_data: Dict[str, Any]) -> Dict[str, Any]:
+def extract_custom_metadata(image: Image.Image, image_file: Any) -> Dict[str, Any]:
     """
-    Extracts DAM-relevant fields from EXIF data.
+    Extracts custom metadata from various sources in the image file.
+    
+    Args:
+        image: PIL Image object
+        image_file: The uploaded file object
+        
+    Returns:
+        Dict[str, Any]: Dictionary containing custom metadata
+    """
+    custom_metadata = {}
+    
+    try:
+        # Reset file pointer
+        image_file.seek(0)
+        
+        # Try to extract from image info (PNG text chunks, etc.)
+        if hasattr(image, 'info') and image.info:
+            for key, value in image.info.items():
+                # Look for JSON-like strings in image info
+                if isinstance(value, str) and (value.strip().startswith('{') or 'componentMetadata' in value):
+                    try:
+                        # Try to parse as JSON
+                        parsed_json = json.loads(value)
+                        custom_metadata['image_info_json'] = parsed_json
+                        break
+                    except json.JSONDecodeError:
+                        # If not valid JSON, store as text
+                        custom_metadata[f'image_info_{key}'] = value
+                elif isinstance(value, str) and len(value) > 10:
+                    # Store other text metadata
+                    custom_metadata[f'image_info_{key}'] = value
+        
+        # Try to extract from EXIF UserComment or ImageDescription
+        exif = image.getexif()
+        if exif:
+            # Check UserComment (tag 37510)
+            if 37510 in exif:
+                user_comment = exif[37510]
+                if isinstance(user_comment, (str, bytes)):
+                    try:
+                        if isinstance(user_comment, bytes):
+                            user_comment = user_comment.decode('utf-8', errors='ignore')
+                        
+                        # Try to parse as JSON
+                        if user_comment.strip().startswith('{'):
+                            parsed_json = json.loads(user_comment)
+                            custom_metadata['exif_user_comment_json'] = parsed_json
+                        else:
+                            custom_metadata['exif_user_comment'] = user_comment
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        custom_metadata['exif_user_comment'] = str(user_comment)
+            
+            # Check ImageDescription (tag 270)
+            if 270 in exif:
+                image_desc = exif[270]
+                if isinstance(image_desc, str) and image_desc.strip().startswith('{'):
+                    try:
+                        parsed_json = json.loads(image_desc)
+                        custom_metadata['exif_description_json'] = parsed_json
+                    except json.JSONDecodeError:
+                        custom_metadata['exif_description'] = image_desc
+        
+        # For PNG files, check text chunks more thoroughly
+        if image.format == 'PNG':
+            custom_metadata.update(extract_png_text_metadata(image))
+        
+        # Try to read raw file data for embedded JSON (last resort)
+        image_file.seek(0)
+        file_content = image_file.read()
+        
+        # Look for JSON patterns in the file content
+        json_patterns = [
+            b'{"componentMetadata"',
+            b'"componentMetadata"',
+            b'{"id":',
+            b'"COMP-'
+        ]
+        
+        for pattern in json_patterns:
+            if pattern in file_content:
+                # Try to extract JSON from around the pattern
+                start_idx = file_content.find(pattern)
+                if start_idx != -1:
+                    # Look for the start of JSON (opening brace)
+                    json_start = file_content.rfind(b'{', 0, start_idx + len(pattern))
+                    if json_start != -1:
+                        # Look for the end of JSON (closing brace)
+                        brace_count = 0
+                        json_end = json_start
+                        for i in range(json_start, len(file_content)):
+                            if file_content[i:i+1] == b'{':
+                                brace_count += 1
+                            elif file_content[i:i+1] == b'}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    json_end = i + 1
+                                    break
+                        
+                        if json_end > json_start:
+                            try:
+                                json_str = file_content[json_start:json_end].decode('utf-8', errors='ignore')
+                                parsed_json = json.loads(json_str)
+                                custom_metadata['embedded_json'] = parsed_json
+                                break
+                            except (json.JSONDecodeError, UnicodeDecodeError):
+                                continue
+        
+    except Exception as e:
+        custom_metadata['extraction_error'] = str(e)
+    
+    return custom_metadata
+
+
+def extract_png_text_metadata(image: Image.Image) -> Dict[str, Any]:
+    """
+    Extracts text metadata from PNG files.
+    
+    Args:
+        image: PIL Image object (PNG format)
+        
+    Returns:
+        Dict[str, Any]: Dictionary containing PNG text metadata
+    """
+    png_metadata = {}
+    
+    try:
+        if hasattr(image, 'text'):
+            for key, value in image.text.items():
+                if isinstance(value, str) and value.strip().startswith('{'):
+                    try:
+                        parsed_json = json.loads(value)
+                        png_metadata[f'png_text_{key}_json'] = parsed_json
+                    except json.JSONDecodeError:
+                        png_metadata[f'png_text_{key}'] = value
+                else:
+                    png_metadata[f'png_text_{key}'] = value
+    except Exception as e:
+        png_metadata['png_extraction_error'] = str(e)
+    
+    return png_metadata
+
+
+def extract_dam_relevant_fields(exif_data: Dict[str, Any], custom_metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    """
+    Extracts DAM-relevant fields from EXIF data and custom metadata.
     
     Args:
         exif_data: Dictionary containing EXIF metadata
+        custom_metadata: Dictionary containing custom metadata
         
     Returns:
         Dict[str, Any]: Dictionary containing DAM-relevant metadata
     """
     dam_fields = {}
     
-    # Mapping of EXIF tags to DAM-relevant field names
-    field_mapping = {
+    # First, extract from custom metadata if available
+    if custom_metadata:
+        # Look for componentMetadata in various locations
+        component_metadata = None
+        
+        for key, value in custom_metadata.items():
+            if isinstance(value, dict):
+                if 'componentMetadata' in value:
+                    component_metadata = value['componentMetadata']
+                    break
+                elif 'id' in value and 'name' in value:
+                    component_metadata = value
+                    break
+        
+        if component_metadata:
+            # Extract DAM-relevant fields from componentMetadata
+            if 'id' in component_metadata:
+                dam_fields['component_id'] = component_metadata['id']
+            if 'name' in component_metadata:
+                dam_fields['component_name'] = component_metadata['name']
+            if 'description' in component_metadata:
+                dam_fields['description'] = component_metadata['description']
+            if 'componentType' in component_metadata:
+                dam_fields['component_type'] = component_metadata['componentType']
+            if 'status' in component_metadata:
+                dam_fields['status'] = component_metadata['status']
+            if 'version' in component_metadata:
+                dam_fields['version'] = component_metadata['version']
+            if 'creationDate' in component_metadata:
+                dam_fields['creation_date'] = component_metadata['creationDate']
+            if 'fileFormat' in component_metadata:
+                dam_fields['file_format'] = component_metadata['fileFormat']
+            if 'colorSpace' in component_metadata:
+                dam_fields['color_space'] = component_metadata['colorSpace']
+            if 'fileSize' in component_metadata:
+                dam_fields['file_size'] = component_metadata['fileSize']
+            
+            # Extract dimensions
+            if 'dimensions' in component_metadata:
+                dims = component_metadata['dimensions']
+                if 'width' in dims and 'height' in dims:
+                    dam_fields['dimensions'] = f"{dims['width']}x{dims['height']}"
+            
+            # Extract usage rights
+            if 'usageRights' in component_metadata:
+                usage_rights = component_metadata['usageRights']
+                dam_fields['usage_rights'] = usage_rights
+            
+            # Extract restrictions
+            if 'geographicRestrictions' in component_metadata:
+                dam_fields['geographic_restrictions'] = component_metadata['geographicRestrictions']
+            if 'channelRestrictions' in component_metadata:
+                dam_fields['channel_restrictions'] = component_metadata['channelRestrictions']
+            
+            # Extract lifespan
+            if 'lifespan' in component_metadata:
+                dam_fields['lifespan'] = component_metadata['lifespan']
+    
+    # Then, extract from EXIF data (this will not override custom metadata)
+    exif_mapping = {
         'Artist': 'photographer',
         'Copyright': 'copyright',
         'DateTime': 'creation_date',
@@ -231,12 +450,12 @@ def extract_dam_relevant_fields(exif_data: Dict[str, Any]) -> Dict[str, Any]:
         'GPS': 'location_data'
     }
     
-    for exif_tag, dam_field in field_mapping.items():
-        if exif_tag in exif_data:
+    for exif_tag, dam_field in exif_mapping.items():
+        if exif_tag in exif_data and dam_field not in dam_fields:  # Don't override custom metadata
             dam_fields[dam_field] = exif_data[exif_tag]
     
     # Handle GPS data specially
-    if 'GPSInfo' in exif_data:
+    if 'GPSInfo' in exif_data and 'has_location_data' not in dam_fields:
         gps_info = exif_data['GPSInfo']
         if gps_info:
             dam_fields['has_location_data'] = True
