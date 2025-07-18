@@ -878,8 +878,14 @@ The analysis was completed successfully but required interpretation of the AI re
             Optional[str]: The extracted human-readable report, or None if not found
         """
         # Look for sections that appear to be human-readable reports
-        # This could be after "HUMAN-READABLE REPORT:" or similar headers
+        # Updated patterns to match the new prompt format
         patterns = [
+            # Match the exact format from our new prompt
+            r'HUMAN[- ]?READABLE[- ]?REPORT:\s*\n\n(.*?)(?:\n\n---|\Z)',
+            r'HUMAN[- ]?READABLE[- ]?REPORT:\s*\n(.*?)(?:\n\n---|\Z)',
+            # Match report sections starting with **DIGITAL ASSET COMPLIANCE**
+            r'\*\*DIGITAL ASSET COMPLIANCE ASSESSMENT REPORT\*\*(.*?)(?:\n\n---|\Z)',
+            # Generic patterns for fallback
             r'(?:HUMAN[- ]?READABLE[- ]?REPORT|PROFESSIONAL[- ]?COMMUNICATION|REPORT):\s*\n(.*?)(?:\n\n|\Z)',
             r'(?:## |# )?(?:Human[- ]?Readable|Professional|Report).*?\n(.*?)(?:\n\n|\Z)',
             r'(?:FINDINGS|SUMMARY|ASSESSMENT)[- ]?REPORT:\s*\n(.*?)(?:\n\n|\Z)'
@@ -890,14 +896,21 @@ The analysis was completed successfully but required interpretation of the AI re
             if match:
                 report = match.group(1).strip()
                 if len(report) > 50:  # Ensure it's substantial content
+                    # Clean up the report - remove extra whitespace and format nicely
+                    report = re.sub(r'\n\s*\n\s*\n', '\n\n', report)  # Remove excessive line breaks
+                    report = report.strip()
                     return report
         
         # If no specific section found, look for substantial text after JSON
         json_end = text.rfind('}')
         if json_end != -1:
             remaining_text = text[json_end + 1:].strip()
-            if len(remaining_text) > 50:  # Substantial content (lowered threshold)
-                return remaining_text
+            # Look for report-like content
+            if ('**' in remaining_text or 'DIGITAL ASSET' in remaining_text.upper() or 
+                'COMPLIANCE' in remaining_text.upper()) and len(remaining_text) > 50:
+                # Clean up the text
+                remaining_text = re.sub(r'\n\s*\n\s*\n', '\n\n', remaining_text)
+                return remaining_text.strip()
         
         return None
     
@@ -933,7 +946,7 @@ The analysis was completed successfully but required interpretation of the AI re
     
     def _generate_human_readable_report(self, json_data: Dict[str, Any]) -> str:
         """
-        Generate a human-readable report from JSON data.
+        Generate a comprehensive human-readable report from JSON data.
         
         Args:
             json_data: The JSON findings data
@@ -953,76 +966,115 @@ The analysis was completed successfully but required interpretation of the AI re
             report_lines = []
             
             # Header
-            report_lines.append(f"DIGITAL ASSET COMPLIANCE ASSESSMENT REPORT")
-            report_lines.append("=" * 50)
+            report_lines.append("**DIGITAL ASSET COMPLIANCE ASSESSMENT REPORT**")
             report_lines.append("")
             
             # Component Information
-            report_lines.append(f"Component Name: {component_name}")
-            report_lines.append(f"Component ID: {component_id}")
-            report_lines.append(f"Assessment Date: {self._get_current_date()}")
+            report_lines.append(f"**Component:** {component_name}")
+            report_lines.append(f"**Component ID:** {component_id}")
+            report_lines.append(f"**Assessment Date:** {self._get_current_date()}")
+            report_lines.append(f"**Status:** {check_status}")
             report_lines.append("")
             
-            # Overall Status
-            status_text = "PASSED" if check_status == "PASSED" else "FAILED"
-            report_lines.append(f"OVERALL COMPLIANCE STATUS: {status_text}")
-            report_lines.append("")
-            
+            # Executive Summary
+            report_lines.append("**Executive Summary:**")
             if check_status == "PASSED":
-                report_lines.append("The digital component has successfully passed all compliance checks.")
-                report_lines.append("No critical issues were identified during the assessment.")
-            else:
-                report_lines.append("The digital component has failed one or more compliance checks.")
-                report_lines.append("Please review the issues and recommendations below.")
+                report_lines.append("The digital component has successfully passed all compliance checks and meets the required standards. No critical issues were identified during the comprehensive assessment.")
+            elif check_status == "FAILED":
+                issue_count = len(issues_detected)
+                missing_count = len(missing_information)
+                report_lines.append(f"The digital component has failed compliance assessment with {issue_count} issue(s) detected and {missing_count} piece(s) of missing information. Immediate attention is required to address the identified concerns.")
+            else:  # PARTIAL
+                report_lines.append("The digital component assessment was completed with some limitations. Review the findings below for detailed information.")
             
             report_lines.append("")
             
-            # Issues Detected
+            # Issues Detected Section
+            report_lines.append(f"**Issues Detected:** {len(issues_detected)}")
             if issues_detected:
-                report_lines.append("ISSUES DETECTED:")
-                report_lines.append("-" * 20)
+                report_lines.append("")
                 for i, issue in enumerate(issues_detected, 1):
                     category = issue.get("category", "General")
                     description = issue.get("description", "No description provided")
                     action = issue.get("action", "")
                     
-                    report_lines.append(f"{i}. {category}: {description}")
+                    report_lines.append(f"**{i}. {category}**")
+                    report_lines.append(f"   - **Issue:** {description}")
                     if action:
-                        report_lines.append(f"   Action Required: {action}")
+                        report_lines.append(f"   - **Required Action:** {action}")
                     report_lines.append("")
+            else:
+                report_lines.append("✅ No issues detected")
+                report_lines.append("")
             
-            # Missing Information
+            # Missing Information Section
+            report_lines.append(f"**Missing Information:** {len(missing_information)}")
             if missing_information:
-                report_lines.append("MISSING INFORMATION:")
-                report_lines.append("-" * 20)
+                report_lines.append("")
                 for i, missing in enumerate(missing_information, 1):
                     field = missing.get("field", "Unknown field")
                     description = missing.get("description", "No description provided")
                     action = missing.get("action", "")
                     
-                    report_lines.append(f"{i}. {field}: {description}")
+                    report_lines.append(f"**{i}. {field}**")
+                    report_lines.append(f"   - **Missing:** {description}")
                     if action:
-                        report_lines.append(f"   Action Required: {action}")
+                        report_lines.append(f"   - **Required Action:** {action}")
                     report_lines.append("")
+            else:
+                report_lines.append("✅ No missing information")
+                report_lines.append("")
             
-            # Recommendations
+            # Recommendations Section
+            report_lines.append("**Recommendations:**")
             if recommendations:
-                report_lines.append("RECOMMENDATIONS:")
-                report_lines.append("-" * 15)
+                report_lines.append("")
                 for i, recommendation in enumerate(recommendations, 1):
                     report_lines.append(f"{i}. {recommendation}")
                 report_lines.append("")
+            else:
+                if check_status == "PASSED":
+                    report_lines.append("1. Continue maintaining current quality standards")
+                    report_lines.append("2. Ensure consistent compliance with established guidelines")
+                else:
+                    report_lines.append("1. Review all identified issues and missing information")
+                    report_lines.append("2. Implement corrective actions as specified above")
+                    report_lines.append("3. Re-submit for assessment after addressing concerns")
+                report_lines.append("")
             
-            # Footer
-            report_lines.append("=" * 50)
-            report_lines.append("This report was generated by the DAM Compliance Analyzer.")
-            report_lines.append("For questions or concerns, please contact your DAM administrator.")
+            # Conclusion
+            report_lines.append("**Conclusion:**")
+            if check_status == "PASSED":
+                report_lines.append("This digital asset is approved for use and meets all compliance requirements. No further action is required at this time.")
+            elif check_status == "FAILED":
+                report_lines.append("This digital asset requires remediation before it can be approved for use. Please address all identified issues and resubmit for assessment.")
+            else:  # PARTIAL
+                report_lines.append("This assessment was completed with some limitations. Please review the findings and consider rerunning the analysis if needed.")
+            
+            report_lines.append("")
+            report_lines.append("---")
+            report_lines.append("*This report was generated by the DAM Compliance Analyzer.*")
+            report_lines.append("*For questions or concerns, please contact your DAM administrator.*")
             
             return "\n".join(report_lines)
             
         except Exception as e:
             logger.error(f"Error generating human-readable report: {str(e)}")
-            return f"Error generating human-readable report: {str(e)}"
+            # Return a basic error report instead of just the error message
+            return f"""**DIGITAL ASSET COMPLIANCE ASSESSMENT REPORT**
+
+**Status:** ERROR - Report Generation Failed
+
+**Component:** {json_data.get('component_name', 'Unknown')}
+**Component ID:** {json_data.get('component_id', 'Unknown')}
+**Assessment Date:** {self._get_current_date()}
+
+**Error:** Unable to generate complete report due to: {str(e)}
+
+**Raw Data:** {json.dumps(json_data, indent=2) if json_data else 'No data available'}
+
+---
+*Please contact technical support for assistance.*"""
     
     def _get_current_date(self) -> str:
         """

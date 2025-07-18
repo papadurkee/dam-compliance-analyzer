@@ -437,7 +437,7 @@ FINDINGS_OUTPUT_SCHEMA = {
         },
         "check_status": {
             "type": "string",
-            "enum": ["PASSED", "FAILED"],
+            "enum": ["PASSED", "FAILED", "PARTIAL"],
             "description": "Overall status of the compliance check"
         },
         "issues_detected": {

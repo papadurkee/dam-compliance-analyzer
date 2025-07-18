@@ -88,21 +88,76 @@ For each field, include an "assessment" (PASS/FAIL/NEEDS_REVIEW) and "notes" wit
 
 # Step 3: Findings Transmission Prompt
 FINDINGS_PROMPT = """
-Based on the completed job aid assessment from Step 2, generate a comprehensive findings report in two formats:
+Based on the completed job aid assessment from Step 2, generate a comprehensive findings report in BOTH formats below.
+
+CRITICAL: You MUST provide BOTH outputs in your response:
 
 1. STRUCTURED JSON OUTPUT: A machine-readable summary of compliance status
 2. HUMAN-READABLE REPORT: A professional communication suitable for stakeholders
 
+FORMAT YOUR RESPONSE EXACTLY AS FOLLOWS:
+
+```json
+{{
+  "component_id": "extracted from analysis or metadata",
+  "component_name": "descriptive name for the component",
+  "check_status": "PASSED or FAILED",
+  "issues_detected": [
+    {{
+      "category": "category name (e.g., Visual Quality, Technical Specifications)",
+      "description": "detailed description of the issue",
+      "action": "recommended action to resolve the issue"
+    }}
+  ],
+  "missing_information": [
+    {{
+      "field": "field name with missing information",
+      "description": "description of what information is missing",
+      "action": "recommended action to provide the missing information"
+    }}
+  ],
+  "recommendations": [
+    "actionable recommendation 1",
+    "actionable recommendation 2"
+  ]
+}}
+```
+
+HUMAN-READABLE REPORT:
+
+**DIGITAL ASSET COMPLIANCE ASSESSMENT REPORT**
+
+**Component:** [Component Name]
+**Component ID:** [Component ID]
+**Assessment Date:** [Current Date]
+**Status:** [PASSED/FAILED]
+
+**Executive Summary:**
+[Provide a clear, professional summary of the overall compliance status and key findings]
+
+**Issues Detected:** [Number]
+[If issues exist, list them with categories and descriptions]
+
+**Missing Information:** [Number]
+[If information is missing, list what's needed]
+
+**Recommendations:**
+[Provide numbered, actionable recommendations]
+
+**Conclusion:**
+[Brief conclusion with next steps]
+
+---
+
 The structured JSON output must follow this exact schema:
 {findings_schema}
 
-The human-readable report should be formatted as a professional communication with:
-- A clear summary of overall compliance status
-- Specific issues identified, organized by category
-- Missing information that prevented complete assessment
-- Actionable recommendations for addressing issues
-
-Both outputs should be consistent with each other and accurately reflect the assessment from Step 2.
+IMPORTANT: 
+- Set check_status to "PASSED" only if NO critical issues were found
+- Set check_status to "FAILED" if ANY issues were detected
+- Base your assessment on the Step 2 job aid results
+- Be specific and actionable in your recommendations
+- Ensure both formats contain consistent information
 """
 
 

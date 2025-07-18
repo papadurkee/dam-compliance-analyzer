@@ -352,10 +352,10 @@ For questions or concerns, please contact your DAM administrator."""
         """Test generating human-readable report for passed status"""
         report = processor._generate_human_readable_report(sample_findings_json)
         
-        assert "DIGITAL ASSET COMPLIANCE ASSESSMENT REPORT" in report
+        assert "**DIGITAL ASSET COMPLIANCE ASSESSMENT REPORT**" in report
         assert "Product Hero Image" in report
         assert "IMG_12345" in report
-        assert "OVERALL COMPLIANCE STATUS: PASSED" in report
+        assert "**Status:** PASSED" in report
         assert "successfully passed all compliance checks" in report
         assert "No changes needed" in report
     
@@ -363,23 +363,26 @@ For questions or concerns, please contact your DAM administrator."""
         """Test generating human-readable report for failed status"""
         report = processor._generate_human_readable_report(sample_findings_json_with_issues)
         
-        assert "DIGITAL ASSET COMPLIANCE ASSESSMENT REPORT" in report
+        assert "**DIGITAL ASSET COMPLIANCE ASSESSMENT REPORT**" in report
         assert "Product Hero Image" in report
         assert "IMG_12345" in report
-        assert "OVERALL COMPLIANCE STATUS: FAILED" in report
-        assert "failed one or more compliance checks" in report
+        assert "**Status:** FAILED" in report
+        assert "failed compliance assessment" in report
         
         # Check issues section
-        assert "ISSUES DETECTED:" in report
-        assert "1. File Format: Image format is not supported" in report
-        assert "2. Visual Quality: Image is blurry" in report
+        assert "**Issues Detected:** 2" in report
+        assert "**1. File Format**" in report
+        assert "Image format is not supported" in report
+        assert "**2. Visual Quality**" in report
+        assert "Image is blurry" in report
         
         # Check missing information section
-        assert "MISSING INFORMATION:" in report
-        assert "1. color_profile: Color profile information is missing" in report
+        assert "**Missing Information:** 1" in report
+        assert "**1. color_profile**" in report
+        assert "Color profile information is missing" in report
         
         # Check recommendations section
-        assert "RECOMMENDATIONS:" in report
+        assert "**Recommendations:**" in report
         assert "1. Convert to JPG format" in report
         assert "2. Improve image clarity" in report
         assert "3. Add color profile information" in report
@@ -393,10 +396,10 @@ For questions or concerns, please contact your DAM administrator."""
         
         report = processor._generate_human_readable_report(minimal_data)
         
-        assert "DIGITAL ASSET COMPLIANCE ASSESSMENT REPORT" in report
+        assert "**DIGITAL ASSET COMPLIANCE ASSESSMENT REPORT**" in report
         assert "TEST_123" in report
-        assert "OVERALL COMPLIANCE STATUS: FAILED" in report
-        assert "failed one or more compliance checks" in report
+        assert "**Status:** FAILED" in report
+        assert "failed compliance assessment" in report
     
     def test_extract_dual_format_from_text_complete(self, processor, sample_dual_format_response, 
                                                    sample_findings_json, sample_human_readable_report):
@@ -613,9 +616,9 @@ For questions or concerns, please contact your DAM administrator."""
         assert result.data["json_output"]["check_status"] == "FAILED"
         assert len(result.data["json_output"]["issues_detected"]) == 2
         assert len(result.data["json_output"]["missing_information"]) == 1
-        assert "OVERALL COMPLIANCE STATUS: FAILED" in result.data["human_readable_report"]
-        assert "ISSUES DETECTED:" in result.data["human_readable_report"]
-        assert "MISSING INFORMATION:" in result.data["human_readable_report"]
+        assert "**Status:** FAILED" in result.data["human_readable_report"]
+        assert "**Issues Detected:** 2" in result.data["human_readable_report"]
+        assert "**Missing Information:** 1" in result.data["human_readable_report"]
 
 
 if __name__ == "__main__":
