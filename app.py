@@ -17,7 +17,9 @@ from utils.image_processing import (
     validate_image_format, 
     convert_to_bytes, 
     generate_image_preview,
-    resize_image_if_needed
+    resize_image_if_needed,
+    extract_embedded_metadata,
+    merge_metadata_with_embedded
 )
 from utils.metadata_handler import (
     validate_json_metadata,
@@ -104,6 +106,52 @@ def create_image_upload_section() -> Optional[bytes]:
                 - Dimensions: {image.width} x {image.height}
                 - Format: {image.format}
                 """)
+                
+                # Extract and display embedded metadata
+                try:
+                    embedded_metadata = extract_embedded_metadata(uploaded_file)
+                    
+                    if embedded_metadata.get('has_exif'):
+                        st.success("📋 EXIF metadata detected!")
+                        
+                        # Show DAM-relevant metadata if available
+                        if 'dam_relevant' in embedded_metadata:
+                            dam_data = embedded_metadata['dam_relevant']
+                            
+                            with st.expander("🔍 View Embedded Metadata"):
+                                if 'photographer' in dam_data:
+                                    st.markdown(f"**Photographer:** {dam_data['photographer']}")
+                                if 'copyright' in dam_data:
+                                    st.markdown(f"**Copyright:** {dam_data['copyright']}")
+                                if 'shoot_date' in dam_data:
+                                    st.markdown(f"**Date Taken:** {dam_data['shoot_date']}")
+                                if 'camera_make' in dam_data:
+                                    st.markdown(f"**Camera:** {dam_data['camera_make']} {dam_data.get('camera_model', '')}")
+                                
+                                # Show technical details
+                                if any(key in dam_data for key in ['iso_speed', 'aperture', 'exposure_time']):
+                                    st.markdown("**Technical Settings:**")
+                                    if 'iso_speed' in dam_data:
+                                        st.markdown(f"- ISO: {dam_data['iso_speed']}")
+                                    if 'aperture' in dam_data:
+                                        st.markdown(f"- Aperture: f/{dam_data['aperture']}")
+                                    if 'exposure_time' in dam_data:
+                                        st.markdown(f"- Exposure: {dam_data['exposure_time']}s")
+                                
+                                # Show location data if available
+                                if dam_data.get('has_location_data'):
+                                    st.markdown("📍 **Location data available**")
+                        
+                        # Store embedded metadata in session state for later use
+                        st.session_state.embedded_metadata = embedded_metadata
+                        
+                    else:
+                        st.info("ℹ️ No EXIF metadata found in this image")
+                        st.session_state.embedded_metadata = None
+                        
+                except Exception as e:
+                    st.warning(f"⚠️ Could not extract metadata: {str(e)}")
+                    st.session_state.embedded_metadata = None
             
             # Convert to bytes for processing
             image_bytes = convert_to_bytes(uploaded_file)
@@ -198,11 +246,19 @@ async def execute_workflow_analysis(image_bytes: bytes, metadata: Optional[Dict[
         Dict[str, Any]: Workflow results
     """
     try:
+        # Merge embedded metadata with user-provided metadata if available
+        final_metadata = metadata or {}
+        
+        # Check if we have embedded metadata in session state
+        if hasattr(st.session_state, 'embedded_metadata') and st.session_state.embedded_metadata:
+            logger.info("Merging embedded EXIF metadata with user-provided metadata")
+            final_metadata = merge_metadata_with_embedded(final_metadata, st.session_state.embedded_metadata)
+        
         # Create workflow engine
         engine = await create_workflow_engine()
         
-        # Execute workflow
-        final_state = await engine.execute_workflow(image_bytes, metadata)
+        # Execute workflow with merged metadata
+        final_state = await engine.execute_workflow(image_bytes, final_metadata)
         
         # Get results
         results = engine.get_workflow_results()

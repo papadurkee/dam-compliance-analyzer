@@ -1,0 +1,11 @@
+# Commands to push to GitHub (replace YOUR_USERNAME with your actual GitHub username)
+
+# Add the remote repository
+git remote add origin https://github.com/papadurkee/dam-compliance-analyzer.git
+
+# Push to GitHub
+git branch -M main
+git push -u origin main
+
+# Verify the push
+git remote -v

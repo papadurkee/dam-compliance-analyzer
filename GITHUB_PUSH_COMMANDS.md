@@ -4,7 +4,7 @@
 
 ```bash
 # Add the remote repository (replace YOUR_USERNAME with your GitHub username)
-git remote add origin https://github.com/YOUR_USERNAME/dam-compliance-analyzer.git
+git remote add origin https://github.com/papadurkee/dam-compliance-analyzer.git
 
 # Push to GitHub
 git branch -M main
