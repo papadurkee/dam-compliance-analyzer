@@ -368,6 +368,20 @@ def create_metadata_from_exif_fallback(filename, embedded_metadata):
     return metadata
 
 
+def clear_workflow_session_state():
+    """Clear workflow-related session state for consistent results."""
+    keys_to_clear = [
+        'workflow_running',
+        'workflow_results', 
+        'embedded_metadata',
+        'auto_populated_metadata'
+    ]
+    
+    for key in keys_to_clear:
+        if key in st.session_state:
+            del st.session_state[key]
+
+
 def create_main_interface():
     """Creates the main application interface with title and description."""
     st.set_page_config(
@@ -383,6 +397,9 @@ def create_main_interface():
     can be used to analyze images for Digital Asset Management (DAM) quality control and regulatory 
     compliance through a structured, multi-step workflow.
     """)
+    
+    # Add consistency note
+    st.info("🎯 **Consistency Mode**: AI temperature set to 0.0 and session state cleared before each analysis for deterministic results.")
     
     st.markdown("---")
 
@@ -895,6 +912,8 @@ def display_workflow_execution_interface(image_bytes: Optional[bytes], metadata:
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
+        # Clear session state for consistent results before each analysis
+        clear_workflow_session_state()
         start_analysis = st.button("🔍 Start Compliance Analysis", type="primary", use_container_width=True)
     
     # Execute workflow if button is clicked

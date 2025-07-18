@@ -128,7 +128,7 @@ class GeminiClient:
         """Get default generation configuration"""
         return {
             "max_output_tokens": 8192,
-            "temperature": 0.1,
+            "temperature": 0.0,  # Set to 0 for deterministic responses
             "top_p": 0.8,
             "top_k": 40
         }
