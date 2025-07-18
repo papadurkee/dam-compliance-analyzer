@@ -72,8 +72,8 @@ class ImageValidationError:
     MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
     
     # Image dimension limits
-    MIN_WIDTH = 100
-    MIN_HEIGHT = 100
+    MIN_WIDTH = 25
+    MIN_HEIGHT = 25
     MAX_WIDTH = 10000
     MAX_HEIGHT = 10000
     
