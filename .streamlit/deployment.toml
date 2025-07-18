@@ -1,0 +1,46 @@
+# Deployment-specific configuration for DAM Compliance Analyzer
+# This file contains settings optimized for production deployment
+
+[server]
+# Production server settings
+headless = true
+port = 8501
+address = "0.0.0.0"
+maxUploadSize = 10
+enableCORS = false
+enableXsrfProtection = true
+enableWebsocketCompression = true
+allowRunOnSave = false
+runOnSave = false
+
+[browser]
+# Browser settings for production
+gatherUsageStats = false
+serverAddress = "0.0.0.0"
+serverPort = 8501
+
+[theme]
+# Professional theme for production
+primaryColor = "#1f77b4"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
+textColor = "#262730"
+font = "sans serif"
+
+[logger]
+# Production logging level
+level = "info"
+messageFormat = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+[client]
+# Client optimization settings
+caching = true
+displayEnabled = true
+showErrorDetails = false
+toolbarMode = "minimal"
+
+[global]
+# Global production settings
+developmentMode = false
+suppressDeprecationWarnings = true
+showWarningOnDirectExecution = false
