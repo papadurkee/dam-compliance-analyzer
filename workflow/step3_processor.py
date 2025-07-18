@@ -238,7 +238,7 @@ class Step3Processor(BaseProcessor):
     
     def _extract_json_from_text(self, text: str) -> Optional[str]:
         """
-        Extract JSON from text.
+        Extract JSON from text with improved parsing.
         
         Args:
             text: The text to extract JSON from
@@ -246,17 +246,139 @@ class Step3Processor(BaseProcessor):
         Returns:
             Optional[str]: The extracted JSON string, or None if not found
         """
-        # Try to find JSON in markdown code blocks
-        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
-        if json_match:
-            return json_match.group(1)
+        # Try multiple extraction methods
+        extraction_methods = [
+            self._extract_from_markdown_blocks,
+            self._extract_with_bracket_matching,
+            self._extract_with_aggressive_cleaning
+        ]
         
-        # Try to find JSON directly
-        json_match = re.search(r'(\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})', text, re.DOTALL)
-        if json_match:
-            return json_match.group(1)
+        for method in extraction_methods:
+            try:
+                json_str = method(text)
+                if json_str:
+                    # Try to parse to validate
+                    json.loads(json_str)
+                    return json_str
+            except json.JSONDecodeError:
+                continue
+            except Exception:
+                continue
         
         return None
+    
+    def _extract_from_markdown_blocks(self, text: str) -> Optional[str]:
+        """Extract JSON from markdown code blocks."""
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+        if json_match:
+            return self._clean_json_string(json_match.group(1).strip())
+        return None
+    
+    def _extract_with_bracket_matching(self, text: str) -> Optional[str]:
+        """Extract JSON using bracket matching."""
+        brace_count = 0
+        start_pos = -1
+        
+        for i, char in enumerate(text):
+            if char == '{':
+                if brace_count == 0:
+                    start_pos = i
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0 and start_pos != -1:
+                    json_str = text[start_pos:i+1]
+                    return self._clean_json_string(json_str)
+        return None
+    
+    def _extract_with_aggressive_cleaning(self, text: str) -> Optional[str]:
+        """Extract JSON with aggressive cleaning for malformed JSON."""
+        # Find potential JSON blocks
+        json_patterns = [
+            r'\{[^{}]*"component_id"[^{}]*\}',
+            r'\{.*?"component_id".*?\}',
+            r'\{.*?\}'
+        ]
+        
+        for pattern in json_patterns:
+            matches = re.findall(pattern, text, re.DOTALL)
+            for match in matches:
+                try:
+                    cleaned = self._aggressively_clean_json(match)
+                    json.loads(cleaned)  # Test if it's valid
+                    return cleaned
+                except:
+                    continue
+        return None
+    
+    def _aggressively_clean_json(self, json_str: str) -> str:
+        """
+        Aggressively clean JSON string to fix malformed JSON.
+        
+        Args:
+            json_str: The JSON string to clean
+            
+        Returns:
+            str: Cleaned JSON string
+        """
+        # Start with basic cleaning
+        json_str = self._clean_json_string(json_str)
+        
+        # More aggressive fixes
+        # Fix common AI-generated issues
+        json_str = re.sub(r'\\(?!["\\/bfnrtu])', r'', json_str)  # Remove invalid escapes
+        json_str = re.sub(r'\n\s*', ' ', json_str)  # Replace newlines with spaces
+        json_str = re.sub(r'\s+', ' ', json_str)  # Normalize whitespace
+        
+        # Fix quotes in string values more aggressively
+        def fix_string_content(match):
+            key = match.group(1)
+            value = match.group(2)
+            # Remove problematic characters from string values
+            value = re.sub(r'[^\w\s\-.,!?()[\]{}:;]', '', value)
+            return f'"{key}": "{value}"'
+        
+        # Apply to key-value pairs
+        json_str = re.sub(r'"([^"]+)":\s*"([^"]*)"', fix_string_content, json_str)
+        
+        return json_str.strip()
+    
+    def _clean_json_string(self, json_str: str) -> str:
+        """
+        Clean JSON string to fix common escape character issues.
+        
+        Args:
+            json_str: The JSON string to clean
+            
+        Returns:
+            str: Cleaned JSON string
+        """
+        # Remove any trailing commas before closing braces/brackets
+        json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+        
+        # Fix common invalid escape sequences
+        # Replace invalid escapes with safe alternatives
+        json_str = re.sub(r'\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})', r'\\\\', json_str)
+        
+        # Fix newlines in strings - replace literal newlines with \n
+        json_str = re.sub(r'(?<!\\)\n(?=.*")', r'\\n', json_str)
+        
+        # Fix unescaped quotes in string values
+        # This is a complex regex to find quotes that should be escaped
+        def fix_quotes(match):
+            content = match.group(1)
+            # Escape any unescaped quotes within the string
+            content = re.sub(r'(?<!\\)"', r'\\"', content)
+            return f'"{content}"'
+        
+        # Apply quote fixing to string values
+        json_str = re.sub(r'"([^"\\]*(?:\\.[^"\\]*)*)"', fix_quotes, json_str)
+        
+        # Clean up any double escaping that might have occurred
+        json_str = json_str.replace('\\\\n', '\\n')
+        json_str = json_str.replace('\\\\"', '\\"')
+        
+        return json_str.strip()
     
     def _extract_human_readable_from_text(self, text: str) -> Optional[str]:
         """
