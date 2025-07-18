@@ -32,6 +32,154 @@ from utils.error_handler import ErrorContext
 from workflow.engine import create_workflow_engine, WorkflowStep
 
 
+def display_file_details(uploaded_file, image, embedded_metadata):
+    """
+    Display enhanced file details with EXIF metadata information.
+    
+    Args:
+        uploaded_file: The uploaded file object
+        image: PIL Image object
+        embedded_metadata: Extracted metadata dictionary
+    """
+    st.markdown("**File Details:**")
+    
+    # Basic file information
+    st.markdown(f"• **Name:** {uploaded_file.name}")
+    st.markdown(f"• **Size:** {uploaded_file.size / (1024*1024):.2f} MB")
+    st.markdown(f"• **Dimensions:** {image.width} x {image.height}")
+    st.markdown(f"• **Format:** {image.format}")
+    
+    # EXIF metadata indicator and details
+    if embedded_metadata.get('has_exif'):
+        st.success("📋 EXIF metadata detected!")
+        
+        # Show DAM-relevant metadata if available
+        if 'dam_relevant' in embedded_metadata:
+            dam_data = embedded_metadata['dam_relevant']
+            
+            # Display key metadata fields in bullet format
+            if 'photographer' in dam_data:
+                st.markdown(f"• **Photographer:** {dam_data['photographer']}")
+            if 'copyright' in dam_data:
+                st.markdown(f"• **Copyright:** {dam_data['copyright']}")
+            if 'shoot_date' in dam_data:
+                st.markdown(f"• **Date Taken:** {dam_data['shoot_date']}")
+            if 'camera_make' in dam_data:
+                camera_info = dam_data['camera_make']
+                if 'camera_model' in dam_data:
+                    camera_info += f" {dam_data['camera_model']}"
+                st.markdown(f"• **Camera:** {camera_info}")
+            
+            # Technical settings
+            tech_settings = []
+            if 'iso_speed' in dam_data:
+                tech_settings.append(f"ISO {dam_data['iso_speed']}")
+            if 'aperture' in dam_data:
+                tech_settings.append(f"f/{dam_data['aperture']}")
+            if 'exposure_time' in dam_data:
+                tech_settings.append(f"{dam_data['exposure_time']}s")
+            
+            if tech_settings:
+                st.markdown(f"• **Camera Settings:** {', '.join(tech_settings)}")
+            
+            # Location data
+            if dam_data.get('has_location_data'):
+                st.markdown("• **Location:** GPS data available")
+            
+            # Show expandable detailed metadata
+            with st.expander("🔍 View All EXIF Data"):
+                exif_data = embedded_metadata.get('exif_data', {})
+                if exif_data:
+                    for key, value in exif_data.items():
+                        if key != 'extraction_error':
+                            st.markdown(f"**{key}:** {value}")
+                else:
+                    st.info("No detailed EXIF data available")
+    else:
+        st.info("ℹ️ No EXIF metadata found in this image")
+
+
+def create_metadata_from_exif(filename, embedded_metadata):
+    """
+    Create a JSON metadata structure from EXIF data.
+    
+    Args:
+        filename: Name of the uploaded file
+        embedded_metadata: Extracted metadata dictionary
+        
+    Returns:
+        Dict[str, Any]: JSON metadata structure populated with EXIF data
+    """
+    # Start with default structure
+    metadata = get_default_metadata_structure()
+    
+    # Extract component ID from filename (remove extension)
+    component_id = filename.rsplit('.', 1)[0].upper()
+    metadata['component_id'] = component_id
+    metadata['component_name'] = filename
+    
+    # Add basic file information
+    basic_info = embedded_metadata.get('basic_info', {})
+    if basic_info:
+        if basic_info.get('format'):
+            metadata['file_specifications']['format'] = basic_info['format']
+        if basic_info.get('width') and basic_info.get('height'):
+            metadata['file_specifications']['resolution'] = f"{basic_info['width']}x{basic_info['height']}"
+    
+    # Add DAM-relevant metadata if available
+    if embedded_metadata.get('has_exif') and 'dam_relevant' in embedded_metadata:
+        dam_data = embedded_metadata['dam_relevant']
+        
+        # Add additional metadata fields section for EXIF data
+        if 'photographer' in dam_data or 'copyright' in dam_data or 'shoot_date' in dam_data:
+            metadata['additional_metadata'] = {}
+            
+            if 'photographer' in dam_data:
+                metadata['additional_metadata']['photographer'] = dam_data['photographer']
+            
+            if 'copyright' in dam_data:
+                metadata['additional_metadata']['copyright'] = dam_data['copyright']
+            
+            if 'shoot_date' in dam_data:
+                metadata['additional_metadata']['creation_date'] = dam_data['shoot_date']
+        
+        # Add camera information to description
+        camera_info = []
+        if 'camera_make' in dam_data:
+            camera_info.append(dam_data['camera_make'])
+        if 'camera_model' in dam_data:
+            camera_info.append(dam_data['camera_model'])
+        
+        if camera_info:
+            camera_desc = f"Captured with {' '.join(camera_info)}"
+            
+            # Add technical settings to description
+            tech_settings = []
+            if 'iso_speed' in dam_data:
+                tech_settings.append(f"ISO {dam_data['iso_speed']}")
+            if 'aperture' in dam_data:
+                tech_settings.append(f"f/{dam_data['aperture']}")
+            if 'exposure_time' in dam_data:
+                tech_settings.append(f"{dam_data['exposure_time']}s")
+            
+            if tech_settings:
+                camera_desc += f" ({', '.join(tech_settings)})"
+            
+            metadata['description'] = camera_desc
+        
+        # Add color space information if available
+        if 'color_space' in dam_data:
+            metadata['file_specifications']['color_profile'] = str(dam_data['color_space'])
+    
+    # Add a note about EXIF auto-population
+    if not metadata.get('description'):
+        metadata['description'] = "Metadata auto-populated from EXIF data"
+    else:
+        metadata['description'] += " - Auto-populated from EXIF data"
+    
+    return metadata
+
+
 def create_main_interface():
     """Creates the main application interface with title and description."""
     st.set_page_config(
@@ -99,59 +247,28 @@ def create_image_upload_section() -> Optional[bytes]:
             
             with col2:
                 st.success("✅ Image uploaded successfully!")
-                st.info(f"""
-                **File Details:**
-                - Name: {uploaded_file.name}
-                - Size: {uploaded_file.size / (1024*1024):.2f} MB
-                - Dimensions: {image.width} x {image.height}
-                - Format: {image.format}
-                """)
                 
                 # Extract and display embedded metadata
                 try:
                     embedded_metadata = extract_embedded_metadata(uploaded_file)
                     
+                    # Display file details with enhanced metadata
+                    display_file_details(uploaded_file, image, embedded_metadata)
+                    
+                    # Store embedded metadata in session state for later use
+                    st.session_state.embedded_metadata = embedded_metadata
+                    
+                    # Auto-populate JSON metadata if EXIF detected
                     if embedded_metadata.get('has_exif'):
-                        st.success("📋 EXIF metadata detected!")
-                        
-                        # Show DAM-relevant metadata if available
-                        if 'dam_relevant' in embedded_metadata:
-                            dam_data = embedded_metadata['dam_relevant']
-                            
-                            with st.expander("🔍 View Embedded Metadata"):
-                                if 'photographer' in dam_data:
-                                    st.markdown(f"**Photographer:** {dam_data['photographer']}")
-                                if 'copyright' in dam_data:
-                                    st.markdown(f"**Copyright:** {dam_data['copyright']}")
-                                if 'shoot_date' in dam_data:
-                                    st.markdown(f"**Date Taken:** {dam_data['shoot_date']}")
-                                if 'camera_make' in dam_data:
-                                    st.markdown(f"**Camera:** {dam_data['camera_make']} {dam_data.get('camera_model', '')}")
-                                
-                                # Show technical details
-                                if any(key in dam_data for key in ['iso_speed', 'aperture', 'exposure_time']):
-                                    st.markdown("**Technical Settings:**")
-                                    if 'iso_speed' in dam_data:
-                                        st.markdown(f"- ISO: {dam_data['iso_speed']}")
-                                    if 'aperture' in dam_data:
-                                        st.markdown(f"- Aperture: f/{dam_data['aperture']}")
-                                    if 'exposure_time' in dam_data:
-                                        st.markdown(f"- Exposure: {dam_data['exposure_time']}s")
-                                
-                                # Show location data if available
-                                if dam_data.get('has_location_data'):
-                                    st.markdown("📍 **Location data available**")
-                        
-                        # Store embedded metadata in session state for later use
-                        st.session_state.embedded_metadata = embedded_metadata
-                        
+                        auto_metadata = create_metadata_from_exif(uploaded_file.name, embedded_metadata)
+                        st.session_state.auto_populated_metadata = json.dumps(auto_metadata, indent=2)
                     else:
-                        st.info("ℹ️ No EXIF metadata found in this image")
-                        st.session_state.embedded_metadata = None
+                        st.session_state.auto_populated_metadata = None
                         
                 except Exception as e:
                     st.warning(f"⚠️ Could not extract metadata: {str(e)}")
                     st.session_state.embedded_metadata = None
+                    st.session_state.auto_populated_metadata = None
             
             # Convert to bytes for processing
             image_bytes = convert_to_bytes(uploaded_file)
@@ -188,11 +305,18 @@ def create_metadata_input_section() -> Optional[Dict[str, Any]]:
         st.code(json.dumps(example_metadata, indent=2), language="json")
     
     with col1:
+        # Check if we have auto-populated metadata from EXIF
+        default_value = ""
+        if hasattr(st.session_state, 'auto_populated_metadata') and st.session_state.auto_populated_metadata:
+            default_value = st.session_state.auto_populated_metadata
+            st.success("📋 EXIF metadata detected! JSON automatically populated below.")
+        
         metadata_input = st.text_area(
             "JSON Metadata",
+            value=default_value,
             height=300,
             placeholder="Enter JSON metadata here, or leave empty to use defaults...",
-            help="Provide component metadata in valid JSON format"
+            help="Provide component metadata in valid JSON format. EXIF data will auto-populate when available."
         )
         
         if metadata_input.strip():
